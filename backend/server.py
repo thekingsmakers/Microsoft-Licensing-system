@@ -763,15 +763,13 @@ async def send_expiry_email(service: dict, days_until_expiry: int):
     elif days_until_expiry <= 7:
         subject = f"WARNING: Service \"{service['name']}\" expires in {days_until_expiry} days!"
     
-    params = {
-        "from": sender_email,
-        "to": [service["contact_email"]],
-        "subject": subject,
-        "html": html_content
-    }
-    
     try:
-        email_result = await asyncio.to_thread(resend.Emails.send, params)
+        await send_email_with_provider(
+            to_email=service["contact_email"],
+            subject=subject,
+            html_content=html_content,
+            settings=settings
+        )
         
         # Log the email
         email_log = EmailLog(
@@ -783,7 +781,7 @@ async def send_expiry_email(service: dict, days_until_expiry: int):
         await db.email_logs.insert_one(email_log.model_dump())
         
         logger.info(f"Email sent to {service['contact_email']} for service {service['name']}")
-        return email_result
+        return {"status": "sent"}
     except Exception as e:
         logger.error(f"Failed to send email: {str(e)}")
         raise
