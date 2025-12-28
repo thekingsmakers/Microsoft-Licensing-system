@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate, Navigate } from "react-router-dom";
-import { useAuth } from "../App";
+import { useAuth, useTheme } from "../App";
 import { toast } from "sonner";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -11,6 +11,7 @@ import { Shield, ArrowRight, Loader2 } from "lucide-react";
 
 const Login = () => {
   const { user, login, register } = useAuth();
+  const { branding } = useTheme();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [loginForm, setLoginForm] = useState({ email: "", password: "" });
@@ -66,12 +67,27 @@ const Login = () => {
       <div className="relative z-10 w-full max-w-md animate-enter">
         {/* Logo */}
         <div className="flex items-center justify-center gap-3 mb-8">
-          <div className="p-3 rounded-sm bg-primary/10 border border-primary/20">
-            <Shield className="h-8 w-8 text-primary" strokeWidth={1.5} />
-          </div>
+          {branding.logo_url ? (
+            <img 
+              src={branding.logo_url} 
+              alt="Logo" 
+              className="h-12 w-12 rounded-sm object-contain"
+              onError={(e) => { e.target.style.display = 'none'; }}
+            />
+          ) : (
+            <div 
+              className="p-3 rounded-sm border"
+              style={{ 
+                backgroundColor: `${branding.primary_color}15`,
+                borderColor: `${branding.primary_color}30`
+              }}
+            >
+              <Shield className="h-8 w-8" style={{ color: branding.primary_color }} strokeWidth={1.5} />
+            </div>
+          )}
           <div>
-            <h1 className="text-2xl font-bold tracking-tight">Renewal Hub</h1>
-            <p className="text-sm text-muted-foreground">Service Management System</p>
+            <h1 className="text-2xl font-bold tracking-tight">{branding.company_name || "Renewal Hub"}</h1>
+            <p className="text-sm text-muted-foreground">{branding.company_tagline || "Service Management System"}</p>
           </div>
         </div>
 
