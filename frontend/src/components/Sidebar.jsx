@@ -7,7 +7,8 @@ import {
   Bell, 
   LogOut,
   Menu,
-  X
+  X,
+  Settings
 } from "lucide-react";
 import { useState } from "react";
 
@@ -21,10 +22,15 @@ const Sidebar = () => {
     navigate("/login");
   };
 
+  const isAdmin = user?.role === "admin";
+
   const navItems = [
-    { path: "/", label: "Dashboard", icon: LayoutDashboard },
-    { path: "/notifications", label: "Notifications", icon: Bell },
+    { path: "/", label: "Dashboard", icon: LayoutDashboard, adminOnly: false },
+    { path: "/notifications", label: "Notifications", icon: Bell, adminOnly: false },
+    { path: "/settings", label: "Settings", icon: Settings, adminOnly: true },
   ];
+
+  const filteredNavItems = navItems.filter(item => !item.adminOnly || isAdmin);
 
   const NavContent = () => (
     <>
@@ -42,7 +48,7 @@ const Sidebar = () => {
       {/* Navigation */}
       <nav className="flex-1 p-4">
         <div className="space-y-1">
-          {navItems.map(({ path, label, icon: Icon }) => (
+          {filteredNavItems.map(({ path, label, icon: Icon }) => (
             <NavLink
               key={path}
               to={path}
