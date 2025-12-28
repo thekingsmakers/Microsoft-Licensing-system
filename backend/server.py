@@ -646,32 +646,108 @@ async def delete_category(category_id: str, current_user: dict = Depends(get_cur
 
 # ==================== SERVICE ROUTES ====================
 
-@api_router.get("/services", response_model=List[Service])
-async def get_services(current_user: dict = Depends(get_current_user)):
-    services = await db.services.find({}, {"_id": 0}).to_list(1000)
+@api_router.get("/services")
+async def get_services(
+    category_id: Optional[str] = None,
+    current_user: dict = Depends(get_current_user)
+):
+    """Get all services, optionally filtered by category"""
+    query = {}
+    if category_id:
+        if category_id == "uncategorized":
+            query["$or"] = [{"category_id": None}, {"category_id": ""}]
+        else:
+            query["category_id"] = category_id
+    
+    services = await db.services.find(query, {"_id": 0}).to_list(1000)
     return services
 
-@api_router.post("/services", response_model=Service)
+@api_router.post("/services")
 async def create_service(service_data: ServiceCreate, current_user: dict = Depends(get_current_user)):
-    service = Service(**service_data.model_dump())
+    data = service_data.model_dump()
+    
+    # Handle expiry date from duration
+    if data.get("expiry_duration_months") and not data.get("expiry_date"):
+        from dateutil.relativedelta import relativedelta
+        expiry = datetime.now(timezone.utc) + relativedelta(months=data["expiry_duration_months"])
+        data["expiry_date"] = expiry.isoformat()
+    
+    # Get category name if category_id is provided
+    if data.get("category_id"):
+        category = await db.categories.find_one({"id": data["category_id"]}, {"_id": 0})
+        if category:
+            data["category_name"] = category["name"]
+    
+    # Ensure default reminder thresholds if not provided
+    if not data.get("reminder_thresholds"):
+        data["reminder_thresholds"] = [
+            {"id": str(uuid.uuid4()), "days_before": 30, "label": "First reminder"},
+            {"id": str(uuid.uuid4()), "days_before": 7, "label": "Second reminder"},
+            {"id": str(uuid.uuid4()), "days_before": 1, "label": "Final reminder"}
+        ]
+    else:
+        # Ensure each threshold has an ID
+        for threshold in data["reminder_thresholds"]:
+            if "id" not in threshold:
+                threshold["id"] = str(uuid.uuid4())
+    
+    # Ensure owners have IDs
+    if data.get("owners"):
+        for owner in data["owners"]:
+            if "id" not in owner:
+                owner["id"] = str(uuid.uuid4())
+    
+    # Set user_id
+    data["user_id"] = current_user["id"]
+    
+    service = Service(**data)
     await db.services.insert_one(service.model_dump())
     return service
 
-@api_router.get("/services/{service_id}", response_model=Service)
+@api_router.get("/services/{service_id}")
 async def get_service(service_id: str, current_user: dict = Depends(get_current_user)):
     service = await db.services.find_one({"id": service_id}, {"_id": 0})
     if not service:
         raise HTTPException(status_code=404, detail="Service not found")
     return service
 
-@api_router.put("/services/{service_id}", response_model=Service)
+@api_router.put("/services/{service_id}")
 async def update_service(service_id: str, service_data: ServiceUpdate, current_user: dict = Depends(get_current_user)):
     existing = await db.services.find_one({"id": service_id}, {"_id": 0})
     if not existing:
         raise HTTPException(status_code=404, detail="Service not found")
     
     update_data = {k: v for k, v in service_data.model_dump().items() if v is not None}
+    
+    # Handle expiry date from duration
+    if update_data.get("expiry_duration_months"):
+        from dateutil.relativedelta import relativedelta
+        expiry = datetime.now(timezone.utc) + relativedelta(months=update_data["expiry_duration_months"])
+        update_data["expiry_date"] = expiry.isoformat()
+    
+    # Get category name if category_id is updated
+    if update_data.get("category_id"):
+        category = await db.categories.find_one({"id": update_data["category_id"]}, {"_id": 0})
+        if category:
+            update_data["category_name"] = category["name"]
+    
+    # Ensure threshold IDs
+    if update_data.get("reminder_thresholds"):
+        for threshold in update_data["reminder_thresholds"]:
+            if "id" not in threshold:
+                threshold["id"] = str(uuid.uuid4())
+    
+    # Ensure owner IDs
+    if update_data.get("owners"):
+        for owner in update_data["owners"]:
+            if "id" not in owner:
+                owner["id"] = str(uuid.uuid4())
+    
     update_data["updated_at"] = datetime.now(timezone.utc).isoformat()
+    
+    # Reset notifications if thresholds changed
+    if "reminder_thresholds" in update_data:
+        update_data["notifications_sent"] = []
     
     await db.services.update_one({"id": service_id}, {"$set": update_data})
     updated = await db.services.find_one({"id": service_id}, {"_id": 0})
