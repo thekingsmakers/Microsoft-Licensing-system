@@ -40,7 +40,7 @@
     }
     
     html {
-        @apply dark;
+        color-scheme: dark;
     }
     
     body {
@@ -156,13 +156,4 @@
         background: hsl(var(--muted));
         border-radius: 3px;
     }
-}
-
-/* Override shadcn defaults for sharper look */
-.rounded-lg {
-    border-radius: 0.25rem !important;
-}
-
-.rounded-md {
-    border-radius: 0.25rem !important;
 }
