@@ -79,7 +79,14 @@ const Sidebar = () => {
             </span>
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium truncate">{user?.name}</p>
+            <div className="flex items-center gap-2">
+              <p className="text-sm font-medium truncate">{user?.name}</p>
+              {isAdmin && (
+                <span className="px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider bg-primary/20 text-primary rounded">
+                  Admin
+                </span>
+              )}
+            </div>
             <p className="text-xs text-muted-foreground truncate">{user?.email}</p>
           </div>
         </div>
