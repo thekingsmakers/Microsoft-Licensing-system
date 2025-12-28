@@ -65,7 +65,22 @@ class User(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     email: EmailStr
     name: str
+    role: str = "user"  # "admin" or "user"
     created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+
+class UserUpdate(BaseModel):
+    name: Optional[str] = None
+    role: Optional[str] = None
+
+class AppSettings(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    id: str = "app_settings"
+    resend_api_key: str = ""
+    sender_email: str = "onboarding@resend.dev"
+    company_name: str = "Your Organization"
+    notification_thresholds: List[int] = [30, 7, 1]
+    updated_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    updated_by: str = ""
 
 class ServiceCreate(BaseModel):
     name: str
