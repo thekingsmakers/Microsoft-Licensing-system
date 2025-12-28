@@ -54,6 +54,19 @@ logger = logging.getLogger(__name__)
 
 # ==================== MODELS ====================
 
+# Owner/Stakeholder model for services
+class ServiceOwner(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    name: str
+    email: EmailStr
+    role: str = "App Owner"  # App Owner, Developer, Manager, Project Manager, Other
+
+# Reminder threshold model
+class ReminderThreshold(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    days_before: int
+    label: str = ""  # e.g., "First reminder", "Final warning"
+
 class UserCreate(BaseModel):
     email: EmailStr
     password: str
@@ -74,6 +87,30 @@ class User(BaseModel):
 class UserUpdate(BaseModel):
     name: Optional[str] = None
     role: Optional[str] = None
+
+# User-defined Category model
+class Category(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    user_id: str
+    name: str
+    description: str = ""
+    color: str = "#06b6d4"
+    icon: str = "folder"
+    created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    updated_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+
+class CategoryCreate(BaseModel):
+    name: str
+    description: Optional[str] = ""
+    color: Optional[str] = "#06b6d4"
+    icon: Optional[str] = "folder"
+
+class CategoryUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    color: Optional[str] = None
+    icon: Optional[str] = None
 
 class AppSettings(BaseModel):
     model_config = ConfigDict(extra="ignore")
