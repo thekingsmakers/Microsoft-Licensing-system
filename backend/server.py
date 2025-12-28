@@ -902,26 +902,26 @@ async def send_email_with_provider(to_email: str, subject: str, html_content: st
         
         return {"id": "smtp_sent", "status": "sent"}
 
-async def send_expiry_email(service: dict, days_until_expiry: int):
-    # Get settings from database
-    settings = await get_app_settings()
-    sender_email = settings.get("sender_email", SENDER_EMAIL)
-    company_name = settings.get("company_name", COMPANY_NAME)
-    
-    # Update resend API key if set in database
-    db_api_key = settings.get("resend_api_key", "")
-    if db_api_key:
-        resend.api_key = db_api_key
-    
+def get_email_html_template(service: dict, recipient_name: str, days_until_expiry: int, threshold_label: str, company_name: str):
+    """Generate HTML email template for expiry notification"""
     urgency = "URGENT" if days_until_expiry <= 1 else "WARNING" if days_until_expiry <= 7 else "REMINDER"
     urgency_text = "expiring TODAY" if days_until_expiry <= 0 else f"expiring in {days_until_expiry} day(s)"
     color = "#ef4444" if days_until_expiry <= 1 else "#f59e0b" if days_until_expiry <= 7 else "#06b6d4"
     btn_color = "#dc2626" if days_until_expiry <= 1 else "#d97706" if days_until_expiry <= 7 else "#0891b2"
     
-    contact_name = service.get('contact_name', '').strip() or "Team"
-    expiry_date_formatted = service['expiry_date'][:10]
+    expiry_date_formatted = service['expiry_date'][:10] if service.get('expiry_date') else "Unknown"
+    category_name = service.get('category_name', 'Uncategorized')
     
-    html_content = f"""
+    # Build owners list for email
+    owners_html = ""
+    if service.get('owners'):
+        owners_html = "<tr><td style='padding: 10px 0; color: #71717a; font-size: 14px; border-top: 1px solid #27272a;'>Stakeholders:</td><td style='padding: 10px 0; color: #fafafa; font-size: 14px; border-top: 1px solid #27272a;'>"
+        owners_html += ", ".join([f"{o.get('name', '')} ({o.get('role', 'Owner')})" for o in service['owners'][:3]])
+        if len(service['owners']) > 3:
+            owners_html += f" +{len(service['owners']) - 3} more"
+        owners_html += "</td></tr>"
+    
+    return f"""
     <!DOCTYPE html>
     <html>
     <head>
@@ -937,18 +937,12 @@ async def send_expiry_email(service: dict, days_until_expiry: int):
                         <!-- Header -->
                         <tr>
                             <td style="background: linear-gradient(135deg, {color}22 0%, {color}05 100%); padding: 32px 40px; border-bottom: 1px solid #27272a;">
-                                <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
-                                    <tr>
-                                        <td>
-                                            <div style="display: inline-block; background-color: {color}20; border: 1px solid {color}40; border-radius: 4px; padding: 8px 12px; margin-bottom: 16px;">
-                                                <span style="color: {color}; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px;">{urgency}</span>
-                                            </div>
-                                            <h1 style="margin: 0; color: #fafafa; font-size: 24px; font-weight: 700;">
-                                                Service {urgency_text}!
-                                            </h1>
-                                        </td>
-                                    </tr>
-                                </table>
+                                <div style="display: inline-block; background-color: {color}20; border: 1px solid {color}40; border-radius: 4px; padding: 8px 12px; margin-bottom: 16px;">
+                                    <span style="color: {color}; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px;">{urgency} - {threshold_label}</span>
+                                </div>
+                                <h1 style="margin: 0; color: #fafafa; font-size: 24px; font-weight: 700;">
+                                    Service {urgency_text}!
+                                </h1>
                             </td>
                         </tr>
                         
@@ -956,10 +950,10 @@ async def send_expiry_email(service: dict, days_until_expiry: int):
                         <tr>
                             <td style="padding: 40px;">
                                 <p style="margin: 0 0 24px 0; color: #a1a1aa; font-size: 16px; line-height: 1.6;">
-                                    Dear {contact_name},
+                                    Dear {recipient_name},
                                 </p>
                                 <p style="margin: 0 0 32px 0; color: #a1a1aa; font-size: 16px; line-height: 1.6;">
-                                    This is a reminder that the service <strong style="color: #fafafa;">{service['name']}</strong> is {urgency_text}.
+                                    This is a <strong style="color: {color};">{threshold_label.lower()}</strong> that the service <strong style="color: #fafafa;">{service['name']}</strong> is {urgency_text}.
                                 </p>
                                 
                                 <!-- Service Details Card -->
@@ -975,21 +969,22 @@ async def send_expiry_email(service: dict, days_until_expiry: int):
                                                     <td style="padding: 10px 0; color: #fafafa; font-size: 14px; font-weight: 500;">{service['name']}</td>
                                                 </tr>
                                                 <tr>
-                                                    <td style="padding: 10px 0; color: #71717a; font-size: 14px; border-top: 1px solid #27272a;">Expiry Date:</td>
-                                                    <td style="padding: 10px 0; color: {color}; font-size: 14px; font-weight: 700; border-top: 1px solid #27272a;">{expiry_date_formatted}</td>
+                                                    <td style="padding: 10px 0; color: #71717a; font-size: 14px; border-top: 1px solid #27272a;">Category:</td>
+                                                    <td style="padding: 10px 0; color: #fafafa; font-size: 14px; border-top: 1px solid #27272a;">{category_name}</td>
                                                 </tr>
                                                 <tr>
                                                     <td style="padding: 10px 0; color: #71717a; font-size: 14px; border-top: 1px solid #27272a;">Provider:</td>
-                                                    <td style="padding: 10px 0; color: #fafafa; font-size: 14px; border-top: 1px solid #27272a;">{service['provider']}</td>
+                                                    <td style="padding: 10px 0; color: #fafafa; font-size: 14px; border-top: 1px solid #27272a;">{service.get('provider', 'N/A')}</td>
                                                 </tr>
                                                 <tr>
-                                                    <td style="padding: 10px 0; color: #71717a; font-size: 14px; border-top: 1px solid #27272a;">Category:</td>
-                                                    <td style="padding: 10px 0; color: #fafafa; font-size: 14px; border-top: 1px solid #27272a;">{service['category']}</td>
+                                                    <td style="padding: 10px 0; color: #71717a; font-size: 14px; border-top: 1px solid #27272a;">Expiry Date:</td>
+                                                    <td style="padding: 10px 0; color: {color}; font-size: 14px; font-weight: 700; border-top: 1px solid #27272a;">{expiry_date_formatted}</td>
                                                 </tr>
                                                 <tr>
                                                     <td style="padding: 10px 0; color: #71717a; font-size: 14px; border-top: 1px solid #27272a;">Days Remaining:</td>
                                                     <td style="padding: 10px 0; color: {color}; font-size: 18px; font-weight: 700; border-top: 1px solid #27272a;">{days_until_expiry} day(s)</td>
                                                 </tr>
+                                                {owners_html}
                                             </table>
                                         </td>
                                     </tr>
@@ -1034,43 +1029,119 @@ async def send_expiry_email(service: dict, days_until_expiry: int):
     </body>
     </html>
     """
+
+async def send_expiry_notifications(service: dict, days_until_expiry: int, threshold_id: str, threshold_label: str):
+    """Send expiry notifications to all service owners"""
+    settings = await get_app_settings()
+    company_name = settings.get("company_name", COMPANY_NAME)
     
+    # Collect all recipients (owners + legacy contact)
+    recipients = []
+    
+    # Add owners
+    if service.get("owners"):
+        for owner in service["owners"]:
+            if owner.get("email"):
+                recipients.append({
+                    "email": owner["email"],
+                    "name": owner.get("name", "Team Member"),
+                    "role": owner.get("role", "Owner")
+                })
+    
+    # Add legacy contact if exists and not already in recipients
+    if service.get("contact_email"):
+        existing_emails = [r["email"].lower() for r in recipients]
+        if service["contact_email"].lower() not in existing_emails:
+            recipients.append({
+                "email": service["contact_email"],
+                "name": service.get("contact_name", "Team"),
+                "role": "Primary Contact"
+            })
+    
+    if not recipients:
+        logger.warning(f"No recipients found for service {service['name']}")
+        return {"status": "no_recipients", "recipients": []}
+    
+    # Build subject
     subject = f"Reminder: Service \"{service['name']}\" is Expiring Soon!"
     if days_until_expiry <= 1:
         subject = f"URGENT: Service \"{service['name']}\" expires {'TODAY' if days_until_expiry <= 0 else 'TOMORROW'}!"
     elif days_until_expiry <= 7:
         subject = f"WARNING: Service \"{service['name']}\" expires in {days_until_expiry} days!"
     
-    try:
-        await send_email_with_provider(
-            to_email=service["contact_email"],
-            subject=subject,
-            html_content=html_content,
-            settings=settings
+    # Send to each recipient
+    results = []
+    for recipient in recipients:
+        html_content = get_email_html_template(
+            service=service,
+            recipient_name=recipient["name"],
+            days_until_expiry=days_until_expiry,
+            threshold_label=threshold_label,
+            company_name=company_name
         )
         
-        # Log the email
-        email_log = EmailLog(
-            service_id=service["id"],
-            service_name=service["name"],
-            recipient_email=service["contact_email"],
-            days_until_expiry=days_until_expiry
-        )
-        await db.email_logs.insert_one(email_log.model_dump())
-        
-        logger.info(f"Email sent to {service['contact_email']} for service {service['name']}")
-        return {"status": "sent"}
-    except Exception as e:
-        logger.error(f"Failed to send email: {str(e)}")
-        raise
+        try:
+            await send_email_with_provider(
+                to_email=recipient["email"],
+                subject=subject,
+                html_content=html_content,
+                settings=settings
+            )
+            
+            # Log individual email
+            email_log = EmailLog(
+                service_id=service["id"],
+                service_name=service["name"],
+                recipient_email=recipient["email"],
+                recipient_name=recipient["name"],
+                threshold_id=threshold_id,
+                threshold_label=threshold_label,
+                days_until_expiry=days_until_expiry,
+                status="sent"
+            )
+            await db.email_logs.insert_one(email_log.model_dump())
+            
+            results.append({"email": recipient["email"], "name": recipient["name"], "status": "sent"})
+            logger.info(f"Email sent to {recipient['email']} for service {service['name']}")
+            
+        except Exception as e:
+            logger.error(f"Failed to send email to {recipient['email']}: {str(e)}")
+            
+            # Log failed email
+            email_log = EmailLog(
+                service_id=service["id"],
+                service_name=service["name"],
+                recipient_email=recipient["email"],
+                recipient_name=recipient["name"],
+                threshold_id=threshold_id,
+                threshold_label=threshold_label,
+                days_until_expiry=days_until_expiry,
+                status="failed"
+            )
+            await db.email_logs.insert_one(email_log.model_dump())
+            
+            results.append({"email": recipient["email"], "name": recipient["name"], "status": "failed", "error": str(e)})
+    
+    # Create notification log entry
+    all_sent = all(r["status"] == "sent" for r in results)
+    any_sent = any(r["status"] == "sent" for r in results)
+    
+    notification_log = NotificationLog(
+        service_id=service["id"],
+        service_name=service["name"],
+        threshold_id=threshold_id,
+        threshold_label=threshold_label,
+        days_until_expiry=days_until_expiry,
+        recipients=results,
+        status="sent" if all_sent else ("partial" if any_sent else "failed")
+    )
+    await db.notification_logs.insert_one(notification_log.model_dump())
+    
+    return {"status": notification_log.status, "recipients": results}
 
 async def check_expiring_services():
-    """Check for expiring services and send notifications"""
+    """Check for expiring services and send notifications using per-service thresholds"""
     logger.info("Running expiry check...")
-    
-    # Get notification thresholds from settings
-    settings = await get_app_settings()
-    thresholds = settings.get("notification_thresholds", NOTIFICATION_THRESHOLDS)
     
     services = await db.services.find({"status": "active"}, {"_id": 0}).to_list(1000)
     now = datetime.now(timezone.utc)
@@ -1088,16 +1159,44 @@ async def check_expiring_services():
             days_until = (expiry_date - now).days
             notifications_sent = service.get("notifications_sent", [])
             
+            # Use per-service thresholds
+            thresholds = service.get("reminder_thresholds", [])
+            if not thresholds:
+                # Fallback to default thresholds
+                thresholds = [
+                    {"id": "default_30", "days_before": 30, "label": "First reminder"},
+                    {"id": "default_7", "days_before": 7, "label": "Second reminder"},
+                    {"id": "default_1", "days_before": 1, "label": "Final reminder"}
+                ]
+            
+            # Sort thresholds by days_before descending
+            thresholds = sorted(thresholds, key=lambda x: x.get("days_before", 0), reverse=True)
+            
             for threshold in thresholds:
-                if days_until <= threshold and threshold not in notifications_sent:
+                threshold_id = threshold.get("id", str(threshold.get("days_before", 0)))
+                days_before = threshold.get("days_before", 0)
+                label = threshold.get("label", f"{days_before} day reminder")
+                
+                # Check if already sent for this threshold
+                if threshold_id in notifications_sent:
+                    continue
+                
+                # Check if we should send this notification
+                if days_until <= days_before:
                     try:
-                        await send_expiry_email(service, days_until)
-                        notifications_sent.append(threshold)
+                        await send_expiry_notifications(service, days_until, threshold_id, label)
+                        notifications_sent.append(threshold_id)
                         await db.services.update_one(
                             {"id": service["id"]},
                             {"$set": {"notifications_sent": notifications_sent}}
                         )
-                        logger.info(f"Sent {threshold}-day notification for {service['name']}")
+                        logger.info(f"Sent '{label}' notification for {service['name']}")
+                    except Exception as e:
+                        logger.error(f"Failed to send notification for {service['name']}: {str(e)}")
+                    break  # Only send one notification per check
+                    
+        except Exception as e:
+            logger.error(f"Error processing service {service.get('name', 'unknown')}: {str(e)}")
                     except Exception as e:
                         logger.error(f"Failed to send notification for {service['name']}: {str(e)}")
                     break
