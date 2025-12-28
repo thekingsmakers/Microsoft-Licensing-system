@@ -228,6 +228,8 @@ async def send_manual_reminder(service_id: str, current_user: dict = Depends(get
     
     try:
         expiry_date = datetime.fromisoformat(service["expiry_date"].replace("Z", "+00:00"))
+        if expiry_date.tzinfo is None:
+            expiry_date = expiry_date.replace(tzinfo=timezone.utc)
         days_until = (expiry_date - datetime.now(timezone.utc)).days
         
         await send_expiry_email(service, days_until)
