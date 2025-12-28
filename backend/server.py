@@ -75,10 +75,28 @@ class UserUpdate(BaseModel):
 class AppSettings(BaseModel):
     model_config = ConfigDict(extra="ignore")
     id: str = "app_settings"
+    # Email Provider Settings
+    email_provider: str = "resend"  # "resend", "smtp", "gmail", "outlook"
     resend_api_key: str = ""
     sender_email: str = "onboarding@resend.dev"
+    sender_name: str = "Service Renewal Hub"
+    # SMTP Settings
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_username: str = ""
+    smtp_password: str = ""
+    smtp_use_tls: bool = True
+    # General Settings
     company_name: str = "Your Organization"
     notification_thresholds: List[int] = [30, 7, 1]
+    # Branding Settings
+    logo_url: str = ""
+    company_tagline: str = "Service Management System"
+    primary_color: str = "#06b6d4"
+    # Theme Settings
+    theme_mode: str = "dark"  # "dark", "light", "system"
+    accent_color: str = "#06b6d4"
+    # Metadata
     updated_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     updated_by: str = ""
 
