@@ -157,6 +157,21 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
     except jwt.InvalidTokenError:
         raise HTTPException(status_code=401, detail="Invalid token")
 
+async def get_admin_user(current_user: dict = Depends(get_current_user)):
+    """Dependency that requires admin role"""
+    if current_user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return current_user
+
+async def get_app_settings():
+    """Get app settings from database or create defaults"""
+    settings = await db.settings.find_one({"id": "app_settings"}, {"_id": 0})
+    if not settings:
+        default_settings = AppSettings()
+        await db.settings.insert_one(default_settings.model_dump())
+        return default_settings.model_dump()
+    return settings
+
 # ==================== AUTH ROUTES ====================
 
 @api_router.post("/auth/register")
