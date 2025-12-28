@@ -411,6 +411,16 @@ NOTIFICATION_THRESHOLDS = [30, 7, 1]
 COMPANY_NAME = os.environ.get('COMPANY_NAME', 'Your Organization')
 
 async def send_expiry_email(service: dict, days_until_expiry: int):
+    # Get settings from database
+    settings = await get_app_settings()
+    sender_email = settings.get("sender_email", SENDER_EMAIL)
+    company_name = settings.get("company_name", COMPANY_NAME)
+    
+    # Update resend API key if set in database
+    db_api_key = settings.get("resend_api_key", "")
+    if db_api_key:
+        resend.api_key = db_api_key
+    
     urgency = "URGENT" if days_until_expiry <= 1 else "WARNING" if days_until_expiry <= 7 else "REMINDER"
     urgency_text = "expiring TODAY" if days_until_expiry <= 0 else f"expiring in {days_until_expiry} day(s)"
     color = "#ef4444" if days_until_expiry <= 1 else "#f59e0b" if days_until_expiry <= 7 else "#06b6d4"
@@ -517,7 +527,7 @@ async def send_expiry_email(service: dict, days_until_expiry: int):
                                     Best regards,
                                 </p>
                                 <p style="margin: 0 0 16px 0; color: #a1a1aa; font-size: 14px; font-weight: 600; text-align: center;">
-                                    The {COMPANY_NAME} Service Management Team
+                                    The {company_name} Service Management Team
                                 </p>
                                 <p style="margin: 0; color: #52525b; font-size: 12px; text-align: center;">
                                     This is an automated notification from Service Renewal Hub
@@ -540,7 +550,7 @@ async def send_expiry_email(service: dict, days_until_expiry: int):
         subject = f"WARNING: Service \"{service['name']}\" expires in {days_until_expiry} days!"
     
     params = {
-        "from": SENDER_EMAIL,
+        "from": sender_email,
         "to": [service["contact_email"]],
         "subject": subject,
         "html": html_content
