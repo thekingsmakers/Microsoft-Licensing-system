@@ -1197,12 +1197,6 @@ async def check_expiring_services():
                     
         except Exception as e:
             logger.error(f"Error processing service {service.get('name', 'unknown')}: {str(e)}")
-                    except Exception as e:
-                        logger.error(f"Failed to send notification for {service['name']}: {str(e)}")
-                    break
-                    
-        except Exception as e:
-            logger.error(f"Error processing service {service.get('name', 'unknown')}: {str(e)}")
     
     logger.info("Expiry check completed")
 
