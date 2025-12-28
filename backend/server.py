@@ -762,9 +762,15 @@ async def delete_service(service_id: str, current_user: dict = Depends(get_curre
 
 # ==================== EMAIL ROUTES ====================
 
-@api_router.get("/email-logs", response_model=List[EmailLog])
+@api_router.get("/email-logs")
 async def get_email_logs(current_user: dict = Depends(get_current_user)):
-    logs = await db.email_logs.find({}, {"_id": 0}).sort("sent_at", -1).to_list(100)
+    logs = await db.email_logs.find({}, {"_id": 0}).sort("sent_at", -1).to_list(200)
+    return logs
+
+@api_router.get("/notification-logs")
+async def get_notification_logs(current_user: dict = Depends(get_current_user)):
+    """Get detailed notification logs with recipient status"""
+    logs = await db.notification_logs.find({}, {"_id": 0}).sort("sent_at", -1).to_list(100)
     return logs
 
 @api_router.post("/services/{service_id}/send-reminder")
@@ -779,8 +785,9 @@ async def send_manual_reminder(service_id: str, current_user: dict = Depends(get
             expiry_date = expiry_date.replace(tzinfo=timezone.utc)
         days_until = (expiry_date - datetime.now(timezone.utc)).days
         
-        await send_expiry_email(service, days_until)
-        return {"message": f"Reminder sent to {service['contact_email']}"}
+        result = await send_expiry_notifications(service, days_until, "manual", "Manual reminder")
+        recipients_count = len(result.get("recipients", []))
+        return {"message": f"Reminder sent to {recipients_count} recipient(s)", "details": result}
     except Exception as e:
         logger.error(f"Failed to send reminder: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to send email: {str(e)}")
