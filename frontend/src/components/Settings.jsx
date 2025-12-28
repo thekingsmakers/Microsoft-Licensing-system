@@ -196,6 +196,11 @@ const Settings = () => {
       // Clear sensitive fields and refresh
       setSettings(prev => ({ ...prev, resend_api_key: "", smtp_password: "" }));
       fetchSettings();
+      
+      // Refresh branding in the app if branding settings were changed
+      if (section === "branding") {
+        refreshBranding();
+      }
     } catch (error) {
       toast.error(error.response?.data?.detail || "Failed to save settings");
     } finally {
