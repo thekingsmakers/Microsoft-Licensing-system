@@ -534,6 +534,22 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Scheduler for automated expiry checks
+scheduler = AsyncIOScheduler()
+
+@app.on_event("startup")
+async def startup_event():
+    # Run expiry check daily at 9 AM
+    scheduler.add_job(
+        check_expiring_services,
+        CronTrigger(hour=9, minute=0),
+        id="daily_expiry_check",
+        replace_existing=True
+    )
+    scheduler.start()
+    logger.info("Scheduler started - daily expiry check scheduled at 9:00 AM")
+
 @app.on_event("shutdown")
 async def shutdown_db_client():
+    scheduler.shutdown()
     client.close()
