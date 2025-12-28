@@ -81,6 +81,7 @@ const THEME_COLORS = [
 
 const Settings = () => {
   const { token, user } = useAuth();
+  const { refreshBranding } = useTheme();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [testingEmail, setTestingEmail] = useState(false);
