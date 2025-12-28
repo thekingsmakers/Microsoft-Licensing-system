@@ -7,6 +7,7 @@ import ServiceTable from "../components/ServiceTable";
 import ServiceModal from "../components/ServiceModal";
 import StatsCards from "../components/StatsCards";
 import EmailLogs from "../components/EmailLogs";
+import Settings from "../components/Settings";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { 
@@ -20,7 +21,7 @@ import { toast } from "sonner";
 import { Plus, Search, RefreshCw, Bell } from "lucide-react";
 
 const Dashboard = () => {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
   const [services, setServices] = useState([]);
   const [stats, setStats] = useState(null);
   const [categories, setCategories] = useState([]);
@@ -237,6 +238,9 @@ const Dashboard = () => {
           <Routes>
             <Route path="/" element={<ServicesPage />} />
             <Route path="/notifications" element={<EmailLogs />} />
+            {user?.role === "admin" && (
+              <Route path="/settings" element={<Settings />} />
+            )}
           </Routes>
         </div>
       </main>
