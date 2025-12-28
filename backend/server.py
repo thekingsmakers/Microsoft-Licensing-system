@@ -520,6 +520,110 @@ NOTIFICATION_THRESHOLDS = [30, 7, 1]
 
 COMPANY_NAME = os.environ.get('COMPANY_NAME', 'Your Organization')
 
+# SMTP Presets for common providers
+SMTP_PRESETS = {
+    "gmail": {
+        "host": "smtp.gmail.com",
+        "port": 587,
+        "use_tls": True
+    },
+    "outlook": {
+        "host": "smtp.office365.com", 
+        "port": 587,
+        "use_tls": True
+    },
+    "exchange": {
+        "host": "smtp.office365.com",
+        "port": 587,
+        "use_tls": True
+    },
+    "yahoo": {
+        "host": "smtp.mail.yahoo.com",
+        "port": 587,
+        "use_tls": True
+    },
+    "sendgrid": {
+        "host": "smtp.sendgrid.net",
+        "port": 587,
+        "use_tls": True
+    },
+    "mailgun": {
+        "host": "smtp.mailgun.org",
+        "port": 587,
+        "use_tls": True
+    }
+}
+
+async def send_email_with_provider(to_email: str, subject: str, html_content: str, settings: dict):
+    """Send email using the configured provider"""
+    provider = settings.get("email_provider", "resend")
+    sender_email = settings.get("sender_email", SENDER_EMAIL)
+    sender_name = settings.get("sender_name", "Service Renewal Hub")
+    
+    if provider == "resend":
+        # Use Resend API
+        db_api_key = settings.get("resend_api_key", "")
+        if db_api_key:
+            resend.api_key = db_api_key
+        
+        params = {
+            "from": f"{sender_name} <{sender_email}>",
+            "to": [to_email],
+            "subject": subject,
+            "html": html_content
+        }
+        
+        return await asyncio.to_thread(resend.Emails.send, params)
+    
+    else:
+        # Use SMTP (works for smtp, gmail, outlook, exchange, etc.)
+        smtp_host = settings.get("smtp_host", "")
+        smtp_port = settings.get("smtp_port", 587)
+        smtp_username = settings.get("smtp_username", "")
+        smtp_password = settings.get("smtp_password", "")
+        use_tls = settings.get("smtp_use_tls", True)
+        
+        # Apply presets for known providers
+        if provider in SMTP_PRESETS:
+            preset = SMTP_PRESETS[provider]
+            smtp_host = smtp_host or preset["host"]
+            smtp_port = smtp_port or preset["port"]
+            use_tls = preset["use_tls"]
+        
+        if not smtp_host or not smtp_username or not smtp_password:
+            raise ValueError(f"SMTP settings incomplete for provider: {provider}")
+        
+        # Create email message
+        message = MIMEMultipart("alternative")
+        message["From"] = f"{sender_name} <{sender_email}>"
+        message["To"] = to_email
+        message["Subject"] = subject
+        
+        html_part = MIMEText(html_content, "html")
+        message.attach(html_part)
+        
+        # Send via SMTP
+        if use_tls:
+            await aiosmtplib.send(
+                message,
+                hostname=smtp_host,
+                port=smtp_port,
+                username=smtp_username,
+                password=smtp_password,
+                start_tls=True
+            )
+        else:
+            await aiosmtplib.send(
+                message,
+                hostname=smtp_host,
+                port=smtp_port,
+                username=smtp_username,
+                password=smtp_password,
+                use_tls=False
+            )
+        
+        return {"id": "smtp_sent", "status": "sent"}
+
 async def send_expiry_email(service: dict, days_until_expiry: int):
     # Get settings from database
     settings = await get_app_settings()
