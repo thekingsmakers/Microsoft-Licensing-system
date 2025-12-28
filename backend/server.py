@@ -1,15 +1,19 @@
-from fastapi import FastAPI, APIRouter
+from fastapi import FastAPI, APIRouter, HTTPException, Depends, BackgroundTasks
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
 import logging
+import asyncio
 from pathlib import Path
-from pydantic import BaseModel, Field, ConfigDict
-from typing import List
+from pydantic import BaseModel, Field, EmailStr, ConfigDict
+from typing import List, Optional
 import uuid
-from datetime import datetime, timezone
-
+from datetime import datetime, timezone, timedelta
+import jwt
+import bcrypt
+import resend
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -19,54 +23,410 @@ mongo_url = os.environ['MONGO_URL']
 client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ['DB_NAME']]
 
-# Create the main app without a prefix
-app = FastAPI()
+# Resend configuration
+resend.api_key = os.environ.get('RESEND_API_KEY', '')
+SENDER_EMAIL = os.environ.get('SENDER_EMAIL', 'onboarding@resend.dev')
+
+# JWT configuration
+JWT_SECRET = os.environ.get('JWT_SECRET', 'your-secret-key-change-in-production')
+JWT_ALGORITHM = "HS256"
+JWT_EXPIRATION_HOURS = 24
+
+# Create the main app
+app = FastAPI(title="Service Renewal Hub")
 
 # Create a router with the /api prefix
 api_router = APIRouter(prefix="/api")
 
+security = HTTPBearer()
 
-# Define Models
-class StatusCheck(BaseModel):
-    model_config = ConfigDict(extra="ignore")  # Ignore MongoDB's _id field
-    
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+# ==================== MODELS ====================
+
+class UserCreate(BaseModel):
+    email: EmailStr
+    password: str
+    name: str
+
+class UserLogin(BaseModel):
+    email: EmailStr
+    password: str
+
+class User(BaseModel):
+    model_config = ConfigDict(extra="ignore")
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    client_name: str
-    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    email: EmailStr
+    name: str
+    created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
-class StatusCheckCreate(BaseModel):
-    client_name: str
+class ServiceCreate(BaseModel):
+    name: str
+    provider: str
+    category: str
+    expiry_date: str
+    contact_email: EmailStr
+    notes: Optional[str] = ""
+    cost: Optional[float] = 0.0
 
-# Add your routes to the router instead of directly to app
+class ServiceUpdate(BaseModel):
+    name: Optional[str] = None
+    provider: Optional[str] = None
+    category: Optional[str] = None
+    expiry_date: Optional[str] = None
+    contact_email: Optional[EmailStr] = None
+    notes: Optional[str] = None
+    cost: Optional[float] = None
+
+class Service(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    name: str
+    provider: str
+    category: str
+    expiry_date: str
+    contact_email: EmailStr
+    notes: str = ""
+    cost: float = 0.0
+    status: str = "active"
+    notifications_sent: List[int] = []
+    created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    updated_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+
+class EmailLog(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    service_id: str
+    service_name: str
+    recipient_email: str
+    days_until_expiry: int
+    sent_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    status: str = "sent"
+
+# ==================== AUTH HELPERS ====================
+
+def hash_password(password: str) -> str:
+    return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+
+def verify_password(password: str, hashed: str) -> bool:
+    return bcrypt.checkpw(password.encode('utf-8'), hashed.encode('utf-8'))
+
+def create_token(user_id: str, email: str) -> str:
+    expiration = datetime.now(timezone.utc) + timedelta(hours=JWT_EXPIRATION_HOURS)
+    payload = {
+        "user_id": user_id,
+        "email": email,
+        "exp": expiration
+    }
+    return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
+
+async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    try:
+        payload = jwt.decode(credentials.credentials, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        user = await db.users.find_one({"id": payload["user_id"]}, {"_id": 0, "password_hash": 0})
+        if not user:
+            raise HTTPException(status_code=401, detail="User not found")
+        return user
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Token expired")
+    except jwt.InvalidTokenError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+# ==================== AUTH ROUTES ====================
+
+@api_router.post("/auth/register")
+async def register(user_data: UserCreate):
+    existing = await db.users.find_one({"email": user_data.email})
+    if existing:
+        raise HTTPException(status_code=400, detail="Email already registered")
+    
+    user = User(email=user_data.email, name=user_data.name)
+    user_doc = user.model_dump()
+    user_doc["password_hash"] = hash_password(user_data.password)
+    
+    await db.users.insert_one(user_doc)
+    token = create_token(user.id, user.email)
+    
+    return {
+        "token": token,
+        "user": {"id": user.id, "email": user.email, "name": user.name}
+    }
+
+@api_router.post("/auth/login")
+async def login(credentials: UserLogin):
+    user = await db.users.find_one({"email": credentials.email}, {"_id": 0})
+    if not user or not verify_password(credentials.password, user.get("password_hash", "")):
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+    
+    token = create_token(user["id"], user["email"])
+    return {
+        "token": token,
+        "user": {"id": user["id"], "email": user["email"], "name": user["name"]}
+    }
+
+@api_router.get("/auth/me")
+async def get_me(current_user: dict = Depends(get_current_user)):
+    return current_user
+
+# ==================== SERVICE ROUTES ====================
+
+@api_router.get("/services", response_model=List[Service])
+async def get_services(current_user: dict = Depends(get_current_user)):
+    services = await db.services.find({}, {"_id": 0}).to_list(1000)
+    return services
+
+@api_router.post("/services", response_model=Service)
+async def create_service(service_data: ServiceCreate, current_user: dict = Depends(get_current_user)):
+    service = Service(**service_data.model_dump())
+    await db.services.insert_one(service.model_dump())
+    return service
+
+@api_router.get("/services/{service_id}", response_model=Service)
+async def get_service(service_id: str, current_user: dict = Depends(get_current_user)):
+    service = await db.services.find_one({"id": service_id}, {"_id": 0})
+    if not service:
+        raise HTTPException(status_code=404, detail="Service not found")
+    return service
+
+@api_router.put("/services/{service_id}", response_model=Service)
+async def update_service(service_id: str, service_data: ServiceUpdate, current_user: dict = Depends(get_current_user)):
+    existing = await db.services.find_one({"id": service_id}, {"_id": 0})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Service not found")
+    
+    update_data = {k: v for k, v in service_data.model_dump().items() if v is not None}
+    update_data["updated_at"] = datetime.now(timezone.utc).isoformat()
+    
+    await db.services.update_one({"id": service_id}, {"$set": update_data})
+    updated = await db.services.find_one({"id": service_id}, {"_id": 0})
+    return updated
+
+@api_router.delete("/services/{service_id}")
+async def delete_service(service_id: str, current_user: dict = Depends(get_current_user)):
+    result = await db.services.delete_one({"id": service_id})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Service not found")
+    return {"message": "Service deleted successfully"}
+
+# ==================== EMAIL ROUTES ====================
+
+@api_router.get("/email-logs", response_model=List[EmailLog])
+async def get_email_logs(current_user: dict = Depends(get_current_user)):
+    logs = await db.email_logs.find({}, {"_id": 0}).sort("sent_at", -1).to_list(100)
+    return logs
+
+@api_router.post("/services/{service_id}/send-reminder")
+async def send_manual_reminder(service_id: str, current_user: dict = Depends(get_current_user)):
+    service = await db.services.find_one({"id": service_id}, {"_id": 0})
+    if not service:
+        raise HTTPException(status_code=404, detail="Service not found")
+    
+    try:
+        expiry_date = datetime.fromisoformat(service["expiry_date"].replace("Z", "+00:00"))
+        days_until = (expiry_date - datetime.now(timezone.utc)).days
+        
+        await send_expiry_email(service, days_until)
+        return {"message": f"Reminder sent to {service['contact_email']}"}
+    except Exception as e:
+        logger.error(f"Failed to send reminder: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to send email: {str(e)}")
+
+# ==================== EXPIRY CHECK & EMAIL ====================
+
+NOTIFICATION_THRESHOLDS = [30, 7, 1]
+
+async def send_expiry_email(service: dict, days_until_expiry: int):
+    urgency = "URGENT" if days_until_expiry <= 1 else "WARNING" if days_until_expiry <= 7 else "REMINDER"
+    color = "#ef4444" if days_until_expiry <= 1 else "#f59e0b" if days_until_expiry <= 7 else "#06b6d4"
+    
+    html_content = f"""
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #121214; padding: 40px; border-radius: 8px;">
+        <div style="text-align: center; margin-bottom: 30px;">
+            <h1 style="color: {color}; margin: 0; font-size: 24px;">{urgency}: Service Expiring Soon</h1>
+        </div>
+        <div style="background: #1a1a1c; padding: 24px; border-radius: 6px; border-left: 4px solid {color};">
+            <h2 style="color: #fafafa; margin: 0 0 16px 0; font-size: 20px;">{service['name']}</h2>
+            <table style="width: 100%; color: #a1a1aa; font-size: 14px;">
+                <tr>
+                    <td style="padding: 8px 0;"><strong>Provider:</strong></td>
+                    <td style="padding: 8px 0; color: #fafafa;">{service['provider']}</td>
+                </tr>
+                <tr>
+                    <td style="padding: 8px 0;"><strong>Category:</strong></td>
+                    <td style="padding: 8px 0; color: #fafafa;">{service['category']}</td>
+                </tr>
+                <tr>
+                    <td style="padding: 8px 0;"><strong>Expiry Date:</strong></td>
+                    <td style="padding: 8px 0; color: {color}; font-weight: bold;">{service['expiry_date'][:10]}</td>
+                </tr>
+                <tr>
+                    <td style="padding: 8px 0;"><strong>Days Remaining:</strong></td>
+                    <td style="padding: 8px 0; color: {color}; font-weight: bold; font-size: 18px;">{days_until_expiry} day(s)</td>
+                </tr>
+            </table>
+        </div>
+        <p style="color: #a1a1aa; margin-top: 24px; font-size: 14px; text-align: center;">
+            Please take action to renew this service before expiration.
+        </p>
+        <div style="text-align: center; margin-top: 24px; padding-top: 24px; border-top: 1px solid #27272a;">
+            <p style="color: #52525b; font-size: 12px; margin: 0;">
+                Service Renewal Hub - Automated Notification
+            </p>
+        </div>
+    </div>
+    """
+    
+    params = {
+        "from": SENDER_EMAIL,
+        "to": [service["contact_email"]],
+        "subject": f"[{urgency}] {service['name']} expires in {days_until_expiry} day(s)",
+        "html": html_content
+    }
+    
+    try:
+        email_result = await asyncio.to_thread(resend.Emails.send, params)
+        
+        # Log the email
+        email_log = EmailLog(
+            service_id=service["id"],
+            service_name=service["name"],
+            recipient_email=service["contact_email"],
+            days_until_expiry=days_until_expiry
+        )
+        await db.email_logs.insert_one(email_log.model_dump())
+        
+        logger.info(f"Email sent to {service['contact_email']} for service {service['name']}")
+        return email_result
+    except Exception as e:
+        logger.error(f"Failed to send email: {str(e)}")
+        raise
+
+async def check_expiring_services():
+    """Check for expiring services and send notifications"""
+    logger.info("Running expiry check...")
+    
+    services = await db.services.find({"status": "active"}, {"_id": 0}).to_list(1000)
+    now = datetime.now(timezone.utc)
+    
+    for service in services:
+        try:
+            expiry_str = service.get("expiry_date", "")
+            if not expiry_str:
+                continue
+                
+            expiry_date = datetime.fromisoformat(expiry_str.replace("Z", "+00:00"))
+            if expiry_date.tzinfo is None:
+                expiry_date = expiry_date.replace(tzinfo=timezone.utc)
+                
+            days_until = (expiry_date - now).days
+            notifications_sent = service.get("notifications_sent", [])
+            
+            for threshold in NOTIFICATION_THRESHOLDS:
+                if days_until <= threshold and threshold not in notifications_sent:
+                    try:
+                        await send_expiry_email(service, days_until)
+                        notifications_sent.append(threshold)
+                        await db.services.update_one(
+                            {"id": service["id"]},
+                            {"$set": {"notifications_sent": notifications_sent}}
+                        )
+                        logger.info(f"Sent {threshold}-day notification for {service['name']}")
+                    except Exception as e:
+                        logger.error(f"Failed to send notification for {service['name']}: {str(e)}")
+                    break
+                    
+        except Exception as e:
+            logger.error(f"Error processing service {service.get('name', 'unknown')}: {str(e)}")
+    
+    logger.info("Expiry check completed")
+
+# ==================== DASHBOARD STATS ====================
+
+@api_router.get("/dashboard/stats")
+async def get_dashboard_stats(current_user: dict = Depends(get_current_user)):
+    services = await db.services.find({"status": "active"}, {"_id": 0}).to_list(1000)
+    now = datetime.now(timezone.utc)
+    
+    total = len(services)
+    expiring_soon = 0
+    expired = 0
+    safe = 0
+    categories = {}
+    total_cost = 0
+    
+    for service in services:
+        try:
+            expiry_str = service.get("expiry_date", "")
+            if not expiry_str:
+                continue
+                
+            expiry_date = datetime.fromisoformat(expiry_str.replace("Z", "+00:00"))
+            if expiry_date.tzinfo is None:
+                expiry_date = expiry_date.replace(tzinfo=timezone.utc)
+                
+            days_until = (expiry_date - now).days
+            
+            if days_until < 0:
+                expired += 1
+            elif days_until <= 30:
+                expiring_soon += 1
+            else:
+                safe += 1
+            
+            cat = service.get("category", "Other")
+            categories[cat] = categories.get(cat, 0) + 1
+            total_cost += service.get("cost", 0)
+            
+        except Exception as e:
+            logger.error(f"Error calculating stats for service: {str(e)}")
+    
+    return {
+        "total": total,
+        "expiring_soon": expiring_soon,
+        "expired": expired,
+        "safe": safe,
+        "categories": categories,
+        "total_cost": total_cost
+    }
+
+@api_router.post("/check-expiring")
+async def trigger_expiry_check(background_tasks: BackgroundTasks, current_user: dict = Depends(get_current_user)):
+    background_tasks.add_task(check_expiring_services)
+    return {"message": "Expiry check triggered"}
+
+# ==================== CATEGORIES ====================
+
+CATEGORIES = [
+    "Software License",
+    "Hardware Maintenance", 
+    "Cloud Subscription",
+    "SaaS",
+    "Domain/Hosting",
+    "Insurance",
+    "Support Contract",
+    "Other"
+]
+
+@api_router.get("/categories")
+async def get_categories():
+    return {"categories": CATEGORIES}
+
+# ==================== HEALTH CHECK ====================
+
 @api_router.get("/")
 async def root():
-    return {"message": "Hello World"}
+    return {"message": "Service Renewal Hub API", "status": "healthy"}
 
-@api_router.post("/status", response_model=StatusCheck)
-async def create_status_check(input: StatusCheckCreate):
-    status_dict = input.model_dump()
-    status_obj = StatusCheck(**status_dict)
-    
-    # Convert to dict and serialize datetime to ISO string for MongoDB
-    doc = status_obj.model_dump()
-    doc['timestamp'] = doc['timestamp'].isoformat()
-    
-    _ = await db.status_checks.insert_one(doc)
-    return status_obj
+@api_router.get("/health")
+async def health():
+    return {"status": "healthy", "timestamp": datetime.now(timezone.utc).isoformat()}
 
-@api_router.get("/status", response_model=List[StatusCheck])
-async def get_status_checks():
-    # Exclude MongoDB's _id field from the query results
-    status_checks = await db.status_checks.find({}, {"_id": 0}).to_list(1000)
-    
-    # Convert ISO string timestamps back to datetime objects
-    for check in status_checks:
-        if isinstance(check['timestamp'], str):
-            check['timestamp'] = datetime.fromisoformat(check['timestamp'])
-    
-    return status_checks
-
-# Include the router in the main app
+# Include the router
 app.include_router(api_router)
 
 app.add_middleware(
@@ -76,13 +436,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
 
 @app.on_event("shutdown")
 async def shutdown_db_client():
