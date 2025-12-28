@@ -1,5 +1,5 @@
 import { NavLink, useNavigate } from "react-router-dom";
-import { useAuth } from "../App";
+import { useAuth, useTheme } from "../App";
 import { Button } from "./ui/button";
 import { 
   Shield, 
@@ -10,33 +10,13 @@ import {
   X,
   Settings
 } from "lucide-react";
-import { useState, useEffect } from "react";
-import axios from "axios";
+import { useState } from "react";
 
 const Sidebar = () => {
-  const { user, logout, token } = useAuth();
+  const { user, logout } = useAuth();
+  const { branding } = useTheme();
   const navigate = useNavigate();
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [branding, setBranding] = useState({
-    company_name: "Renewal Hub",
-    company_tagline: "Service Manager",
-    logo_url: "",
-    primary_color: "#06b6d4"
-  });
-
-  useEffect(() => {
-    // Fetch public branding settings
-    const fetchBranding = async () => {
-      try {
-        const API = process.env.REACT_APP_BACKEND_URL + "/api";
-        const response = await axios.get(`${API}/settings/public`);
-        setBranding(response.data);
-      } catch (error) {
-        console.log("Using default branding");
-      }
-    };
-    fetchBranding();
-  }, []);
 
   const handleLogout = () => {
     logout();
