@@ -280,10 +280,27 @@ async def update_settings(
     return {"message": "Settings updated successfully"}
 
 class SettingsUpdate(BaseModel):
+    # Email Provider
+    email_provider: Optional[str] = None
     resend_api_key: Optional[str] = None
     sender_email: Optional[str] = None
+    sender_name: Optional[str] = None
+    # SMTP
+    smtp_host: Optional[str] = None
+    smtp_port: Optional[int] = None
+    smtp_username: Optional[str] = None
+    smtp_password: Optional[str] = None
+    smtp_use_tls: Optional[bool] = None
+    # General
     company_name: Optional[str] = None
     notification_thresholds: Optional[List[int]] = None
+    # Branding
+    logo_url: Optional[str] = None
+    company_tagline: Optional[str] = None
+    primary_color: Optional[str] = None
+    # Theme
+    theme_mode: Optional[str] = None
+    accent_color: Optional[str] = None
 
 @api_router.put("/settings/update")
 async def update_settings_json(
@@ -295,18 +312,48 @@ async def update_settings_json(
         "updated_by": current_user["id"]
     }
     
+    # Email provider settings
+    if settings_data.email_provider is not None:
+        update_data["email_provider"] = settings_data.email_provider
     if settings_data.resend_api_key is not None:
         update_data["resend_api_key"] = settings_data.resend_api_key
         resend.api_key = settings_data.resend_api_key
-        
     if settings_data.sender_email is not None:
         update_data["sender_email"] = settings_data.sender_email
+    if settings_data.sender_name is not None:
+        update_data["sender_name"] = settings_data.sender_name
         
+    # SMTP settings
+    if settings_data.smtp_host is not None:
+        update_data["smtp_host"] = settings_data.smtp_host
+    if settings_data.smtp_port is not None:
+        update_data["smtp_port"] = settings_data.smtp_port
+    if settings_data.smtp_username is not None:
+        update_data["smtp_username"] = settings_data.smtp_username
+    if settings_data.smtp_password is not None:
+        update_data["smtp_password"] = settings_data.smtp_password
+    if settings_data.smtp_use_tls is not None:
+        update_data["smtp_use_tls"] = settings_data.smtp_use_tls
+        
+    # General settings
     if settings_data.company_name is not None:
         update_data["company_name"] = settings_data.company_name
-        
     if settings_data.notification_thresholds is not None:
         update_data["notification_thresholds"] = sorted(settings_data.notification_thresholds, reverse=True)
+    
+    # Branding settings
+    if settings_data.logo_url is not None:
+        update_data["logo_url"] = settings_data.logo_url
+    if settings_data.company_tagline is not None:
+        update_data["company_tagline"] = settings_data.company_tagline
+    if settings_data.primary_color is not None:
+        update_data["primary_color"] = settings_data.primary_color
+        
+    # Theme settings
+    if settings_data.theme_mode is not None:
+        update_data["theme_mode"] = settings_data.theme_mode
+    if settings_data.accent_color is not None:
+        update_data["accent_color"] = settings_data.accent_color
     
     await db.settings.update_one(
         {"id": "app_settings"},
@@ -315,6 +362,48 @@ async def update_settings_json(
     )
     
     return {"message": "Settings updated successfully"}
+
+# Public settings endpoint (for theme/branding - no auth required)
+@api_router.get("/settings/public")
+async def get_public_settings():
+    settings = await get_app_settings()
+    return {
+        "company_name": settings.get("company_name", "Your Organization"),
+        "company_tagline": settings.get("company_tagline", "Service Management System"),
+        "logo_url": settings.get("logo_url", ""),
+        "primary_color": settings.get("primary_color", "#06b6d4"),
+        "theme_mode": settings.get("theme_mode", "dark"),
+        "accent_color": settings.get("accent_color", "#06b6d4")
+    }
+
+@api_router.post("/settings/test-email")
+async def test_email_settings(current_user: dict = Depends(get_admin_user)):
+    """Send a test email to verify email configuration"""
+    settings = await get_app_settings()
+    
+    test_html = f"""
+    <div style="font-family: Arial, sans-serif; padding: 20px; background: #121214; color: #fafafa;">
+        <h2 style="color: {settings.get('primary_color', '#06b6d4')};">Email Configuration Test</h2>
+        <p>This is a test email from {settings.get('company_name', 'Service Renewal Hub')}.</p>
+        <p>If you received this email, your email settings are configured correctly!</p>
+        <hr style="border-color: #27272a;">
+        <p style="color: #71717a; font-size: 12px;">
+            Provider: {settings.get('email_provider', 'resend').upper()}<br>
+            Sent at: {datetime.now(timezone.utc).isoformat()}
+        </p>
+    </div>
+    """
+    
+    try:
+        await send_email_with_provider(
+            to_email=current_user["email"],
+            subject=f"[Test] Email Configuration - {settings.get('company_name', 'Service Renewal Hub')}",
+            html_content=test_html,
+            settings=settings
+        )
+        return {"message": f"Test email sent to {current_user['email']}"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to send test email: {str(e)}")
 
 # ==================== USER MANAGEMENT ROUTES (Admin Only) ====================
 
