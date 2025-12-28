@@ -143,9 +143,17 @@ class AppSettings(BaseModel):
 class ServiceCreate(BaseModel):
     name: str
     provider: str
-    category: str
-    expiry_date: str
-    contact_email: EmailStr
+    category_id: Optional[str] = None  # Reference to user-defined category
+    category_name: Optional[str] = "Uncategorized"  # Fallback display name
+    # Expiry settings
+    expiry_date: Optional[str] = None
+    expiry_duration_months: Optional[int] = None  # Alternative: set duration instead of fixed date
+    # Reminder thresholds (per-service)
+    reminder_thresholds: Optional[List[dict]] = None  # [{days_before: 30, label: "First reminder"}]
+    # Owners/Stakeholders
+    owners: Optional[List[dict]] = None  # [{name, email, role}]
+    # Legacy field for backward compatibility
+    contact_email: Optional[EmailStr] = None
     contact_name: Optional[str] = ""
     notes: Optional[str] = ""
     cost: Optional[float] = 0.0
@@ -153,8 +161,12 @@ class ServiceCreate(BaseModel):
 class ServiceUpdate(BaseModel):
     name: Optional[str] = None
     provider: Optional[str] = None
-    category: Optional[str] = None
+    category_id: Optional[str] = None
+    category_name: Optional[str] = None
     expiry_date: Optional[str] = None
+    expiry_duration_months: Optional[int] = None
+    reminder_thresholds: Optional[List[dict]] = None
+    owners: Optional[List[dict]] = None
     contact_email: Optional[EmailStr] = None
     contact_name: Optional[str] = None
     notes: Optional[str] = None
@@ -163,18 +175,43 @@ class ServiceUpdate(BaseModel):
 class Service(BaseModel):
     model_config = ConfigDict(extra="ignore")
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    user_id: str = ""  # Owner of the service record
     name: str
     provider: str
-    category: str
+    category_id: Optional[str] = None
+    category_name: str = "Uncategorized"
     expiry_date: str
-    contact_email: EmailStr
+    expiry_duration_months: Optional[int] = None
+    # Per-service reminder thresholds
+    reminder_thresholds: List[dict] = Field(default_factory=lambda: [
+        {"id": str(uuid.uuid4()), "days_before": 30, "label": "First reminder"},
+        {"id": str(uuid.uuid4()), "days_before": 7, "label": "Second reminder"},
+        {"id": str(uuid.uuid4()), "days_before": 1, "label": "Final reminder"}
+    ])
+    # Multiple owners/stakeholders
+    owners: List[dict] = Field(default_factory=list)  # [{id, name, email, role}]
+    # Legacy fields
+    contact_email: Optional[str] = None
     contact_name: str = ""
     notes: str = ""
     cost: float = 0.0
     status: str = "active"
-    notifications_sent: List[int] = []
+    notifications_sent: List[str] = []  # Changed to store threshold IDs instead of days
     created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     updated_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+
+class NotificationLog(BaseModel):
+    """Enhanced notification log with owner tracking"""
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    service_id: str
+    service_name: str
+    threshold_id: str
+    threshold_label: str
+    days_until_expiry: int
+    recipients: List[dict] = []  # [{email, name, status}]
+    sent_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    status: str = "sent"  # sent, partial, failed
 
 class EmailLog(BaseModel):
     model_config = ConfigDict(extra="ignore")
@@ -182,9 +219,12 @@ class EmailLog(BaseModel):
     service_id: str
     service_name: str
     recipient_email: str
+    recipient_name: str = ""
+    threshold_id: str = ""
+    threshold_label: str = ""
     days_until_expiry: int
     sent_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
-    status: str = "sent"
+    status: str = "sent"  # sent, failed, pending
 
 # ==================== AUTH HELPERS ====================
 
