@@ -180,7 +180,11 @@ async def register(user_data: UserCreate):
     if existing:
         raise HTTPException(status_code=400, detail="Email already registered")
     
-    user = User(email=user_data.email, name=user_data.name)
+    # First user becomes admin
+    user_count = await db.users.count_documents({})
+    role = "admin" if user_count == 0 else "user"
+    
+    user = User(email=user_data.email, name=user_data.name, role=role)
     user_doc = user.model_dump()
     user_doc["password_hash"] = hash_password(user_data.password)
     
@@ -189,7 +193,7 @@ async def register(user_data: UserCreate):
     
     return {
         "token": token,
-        "user": {"id": user.id, "email": user.email, "name": user.name}
+        "user": {"id": user.id, "email": user.email, "name": user.name, "role": user.role}
     }
 
 @api_router.post("/auth/login")
@@ -201,12 +205,139 @@ async def login(credentials: UserLogin):
     token = create_token(user["id"], user["email"])
     return {
         "token": token,
-        "user": {"id": user["id"], "email": user["email"], "name": user["name"]}
+        "user": {"id": user["id"], "email": user["email"], "name": user["name"], "role": user.get("role", "user")}
     }
 
 @api_router.get("/auth/me")
 async def get_me(current_user: dict = Depends(get_current_user)):
     return current_user
+
+# ==================== SETTINGS ROUTES (Admin Only) ====================
+
+@api_router.get("/settings")
+async def get_settings(current_user: dict = Depends(get_admin_user)):
+    settings = await get_app_settings()
+    # Mask API key for security (show only last 4 chars)
+    if settings.get("resend_api_key"):
+        key = settings["resend_api_key"]
+        settings["resend_api_key_masked"] = f"{'*' * (len(key) - 4)}{key[-4:]}" if len(key) > 4 else "****"
+    return settings
+
+@api_router.put("/settings")
+async def update_settings(
+    resend_api_key: Optional[str] = None,
+    sender_email: Optional[str] = None,
+    company_name: Optional[str] = None,
+    notification_thresholds: Optional[List[int]] = None,
+    current_user: dict = Depends(get_admin_user)
+):
+    update_data = {
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+        "updated_by": current_user["id"]
+    }
+    
+    if resend_api_key is not None:
+        update_data["resend_api_key"] = resend_api_key
+        # Update resend API key in memory
+        resend.api_key = resend_api_key
+        
+    if sender_email is not None:
+        update_data["sender_email"] = sender_email
+        
+    if company_name is not None:
+        update_data["company_name"] = company_name
+        
+    if notification_thresholds is not None:
+        update_data["notification_thresholds"] = sorted(notification_thresholds, reverse=True)
+    
+    await db.settings.update_one(
+        {"id": "app_settings"},
+        {"$set": update_data},
+        upsert=True
+    )
+    
+    return {"message": "Settings updated successfully"}
+
+class SettingsUpdate(BaseModel):
+    resend_api_key: Optional[str] = None
+    sender_email: Optional[str] = None
+    company_name: Optional[str] = None
+    notification_thresholds: Optional[List[int]] = None
+
+@api_router.put("/settings/update")
+async def update_settings_json(
+    settings_data: SettingsUpdate,
+    current_user: dict = Depends(get_admin_user)
+):
+    update_data = {
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+        "updated_by": current_user["id"]
+    }
+    
+    if settings_data.resend_api_key is not None:
+        update_data["resend_api_key"] = settings_data.resend_api_key
+        resend.api_key = settings_data.resend_api_key
+        
+    if settings_data.sender_email is not None:
+        update_data["sender_email"] = settings_data.sender_email
+        
+    if settings_data.company_name is not None:
+        update_data["company_name"] = settings_data.company_name
+        
+    if settings_data.notification_thresholds is not None:
+        update_data["notification_thresholds"] = sorted(settings_data.notification_thresholds, reverse=True)
+    
+    await db.settings.update_one(
+        {"id": "app_settings"},
+        {"$set": update_data},
+        upsert=True
+    )
+    
+    return {"message": "Settings updated successfully"}
+
+# ==================== USER MANAGEMENT ROUTES (Admin Only) ====================
+
+@api_router.get("/users")
+async def get_users(current_user: dict = Depends(get_admin_user)):
+    users = await db.users.find({}, {"_id": 0, "password_hash": 0}).to_list(1000)
+    return users
+
+@api_router.put("/users/{user_id}")
+async def update_user(user_id: str, user_data: UserUpdate, current_user: dict = Depends(get_admin_user)):
+    existing = await db.users.find_one({"id": user_id}, {"_id": 0})
+    if not existing:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    # Prevent demoting the last admin
+    if user_data.role == "user" and existing.get("role") == "admin":
+        admin_count = await db.users.count_documents({"role": "admin"})
+        if admin_count <= 1:
+            raise HTTPException(status_code=400, detail="Cannot demote the last admin")
+    
+    update_data = {k: v for k, v in user_data.model_dump().items() if v is not None}
+    if update_data:
+        await db.users.update_one({"id": user_id}, {"$set": update_data})
+    
+    updated = await db.users.find_one({"id": user_id}, {"_id": 0, "password_hash": 0})
+    return updated
+
+@api_router.delete("/users/{user_id}")
+async def delete_user(user_id: str, current_user: dict = Depends(get_admin_user)):
+    if user_id == current_user["id"]:
+        raise HTTPException(status_code=400, detail="Cannot delete yourself")
+    
+    existing = await db.users.find_one({"id": user_id}, {"_id": 0})
+    if not existing:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    # Prevent deleting the last admin
+    if existing.get("role") == "admin":
+        admin_count = await db.users.count_documents({"role": "admin"})
+        if admin_count <= 1:
+            raise HTTPException(status_code=400, detail="Cannot delete the last admin")
+    
+    await db.users.delete_one({"id": user_id})
+    return {"message": "User deleted successfully"}
 
 # ==================== SERVICE ROUTES ====================
 
