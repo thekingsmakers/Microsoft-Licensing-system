@@ -1254,9 +1254,8 @@ async def trigger_expiry_check(background_tasks: BackgroundTasks, current_user: 
     background_tasks.add_task(check_expiring_services)
     return {"message": "Expiry check triggered"}
 
-# ==================== CATEGORIES ====================
-
-CATEGORIES = [
+# Default category suggestions (for UI hints)
+DEFAULT_CATEGORY_SUGGESTIONS = [
     "Software License",
     "Hardware Maintenance", 
     "Cloud Subscription",
@@ -1267,9 +1266,10 @@ CATEGORIES = [
     "Other"
 ]
 
-@api_router.get("/categories")
-async def get_categories():
-    return {"categories": CATEGORIES}
+@api_router.get("/category-suggestions")
+async def get_category_suggestions():
+    """Get default category name suggestions for creating new categories"""
+    return {"suggestions": DEFAULT_CATEGORY_SUGGESTIONS}
 
 # ==================== HEALTH CHECK ====================
 
