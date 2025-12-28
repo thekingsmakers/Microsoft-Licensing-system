@@ -71,6 +71,7 @@ class ServiceCreate(BaseModel):
     category: str
     expiry_date: str
     contact_email: EmailStr
+    contact_name: Optional[str] = ""
     notes: Optional[str] = ""
     cost: Optional[float] = 0.0
 
@@ -80,6 +81,7 @@ class ServiceUpdate(BaseModel):
     category: Optional[str] = None
     expiry_date: Optional[str] = None
     contact_email: Optional[EmailStr] = None
+    contact_name: Optional[str] = None
     notes: Optional[str] = None
     cost: Optional[float] = None
 
@@ -91,6 +93,7 @@ class Service(BaseModel):
     category: str
     expiry_date: str
     contact_email: EmailStr
+    contact_name: str = ""
     notes: str = ""
     cost: float = 0.0
     status: str = "active"
@@ -242,51 +245,141 @@ async def send_manual_reminder(service_id: str, current_user: dict = Depends(get
 
 NOTIFICATION_THRESHOLDS = [30, 7, 1]
 
+COMPANY_NAME = os.environ.get('COMPANY_NAME', 'Your Organization')
+
 async def send_expiry_email(service: dict, days_until_expiry: int):
     urgency = "URGENT" if days_until_expiry <= 1 else "WARNING" if days_until_expiry <= 7 else "REMINDER"
+    urgency_text = "expiring TODAY" if days_until_expiry <= 0 else f"expiring in {days_until_expiry} day(s)"
     color = "#ef4444" if days_until_expiry <= 1 else "#f59e0b" if days_until_expiry <= 7 else "#06b6d4"
+    btn_color = "#dc2626" if days_until_expiry <= 1 else "#d97706" if days_until_expiry <= 7 else "#0891b2"
+    
+    contact_name = service.get('contact_name', '').strip() or "Team"
+    expiry_date_formatted = service['expiry_date'][:10]
     
     html_content = f"""
-    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #121214; padding: 40px; border-radius: 8px;">
-        <div style="text-align: center; margin-bottom: 30px;">
-            <h1 style="color: {color}; margin: 0; font-size: 24px;">{urgency}: Service Expiring Soon</h1>
-        </div>
-        <div style="background: #1a1a1c; padding: 24px; border-radius: 6px; border-left: 4px solid {color};">
-            <h2 style="color: #fafafa; margin: 0 0 16px 0; font-size: 20px;">{service['name']}</h2>
-            <table style="width: 100%; color: #a1a1aa; font-size: 14px;">
-                <tr>
-                    <td style="padding: 8px 0;"><strong>Provider:</strong></td>
-                    <td style="padding: 8px 0; color: #fafafa;">{service['provider']}</td>
-                </tr>
-                <tr>
-                    <td style="padding: 8px 0;"><strong>Category:</strong></td>
-                    <td style="padding: 8px 0; color: #fafafa;">{service['category']}</td>
-                </tr>
-                <tr>
-                    <td style="padding: 8px 0;"><strong>Expiry Date:</strong></td>
-                    <td style="padding: 8px 0; color: {color}; font-weight: bold;">{service['expiry_date'][:10]}</td>
-                </tr>
-                <tr>
-                    <td style="padding: 8px 0;"><strong>Days Remaining:</strong></td>
-                    <td style="padding: 8px 0; color: {color}; font-weight: bold; font-size: 18px;">{days_until_expiry} day(s)</td>
-                </tr>
-            </table>
-        </div>
-        <p style="color: #a1a1aa; margin-top: 24px; font-size: 14px; text-align: center;">
-            Please take action to renew this service before expiration.
-        </p>
-        <div style="text-align: center; margin-top: 24px; padding-top: 24px; border-top: 1px solid #27272a;">
-            <p style="color: #52525b; font-size: 12px; margin: 0;">
-                Service Renewal Hub - Automated Notification
-            </p>
-        </div>
-    </div>
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    </head>
+    <body style="margin: 0; padding: 0; background-color: #0a0a0b; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">
+        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color: #0a0a0b;">
+            <tr>
+                <td align="center" style="padding: 40px 20px;">
+                    <table role="presentation" width="600" cellspacing="0" cellpadding="0" style="max-width: 600px; background-color: #121214; border-radius: 8px; overflow: hidden;">
+                        
+                        <!-- Header -->
+                        <tr>
+                            <td style="background: linear-gradient(135deg, {color}22 0%, {color}05 100%); padding: 32px 40px; border-bottom: 1px solid #27272a;">
+                                <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
+                                    <tr>
+                                        <td>
+                                            <div style="display: inline-block; background-color: {color}20; border: 1px solid {color}40; border-radius: 4px; padding: 8px 12px; margin-bottom: 16px;">
+                                                <span style="color: {color}; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px;">{urgency}</span>
+                                            </div>
+                                            <h1 style="margin: 0; color: #fafafa; font-size: 24px; font-weight: 700;">
+                                                Service {urgency_text}!
+                                            </h1>
+                                        </td>
+                                    </tr>
+                                </table>
+                            </td>
+                        </tr>
+                        
+                        <!-- Body -->
+                        <tr>
+                            <td style="padding: 40px;">
+                                <p style="margin: 0 0 24px 0; color: #a1a1aa; font-size: 16px; line-height: 1.6;">
+                                    Dear {contact_name},
+                                </p>
+                                <p style="margin: 0 0 32px 0; color: #a1a1aa; font-size: 16px; line-height: 1.6;">
+                                    This is a reminder that the service <strong style="color: #fafafa;">{service['name']}</strong> is {urgency_text}.
+                                </p>
+                                
+                                <!-- Service Details Card -->
+                                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color: #1a1a1c; border-radius: 6px; border-left: 4px solid {color}; margin-bottom: 32px;">
+                                    <tr>
+                                        <td style="padding: 24px;">
+                                            <h2 style="margin: 0 0 20px 0; color: #fafafa; font-size: 18px; font-weight: 600;">
+                                                Service Details
+                                            </h2>
+                                            <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
+                                                <tr>
+                                                    <td style="padding: 10px 0; color: #71717a; font-size: 14px; width: 140px;">Service Name:</td>
+                                                    <td style="padding: 10px 0; color: #fafafa; font-size: 14px; font-weight: 500;">{service['name']}</td>
+                                                </tr>
+                                                <tr>
+                                                    <td style="padding: 10px 0; color: #71717a; font-size: 14px; border-top: 1px solid #27272a;">Expiry Date:</td>
+                                                    <td style="padding: 10px 0; color: {color}; font-size: 14px; font-weight: 700; border-top: 1px solid #27272a;">{expiry_date_formatted}</td>
+                                                </tr>
+                                                <tr>
+                                                    <td style="padding: 10px 0; color: #71717a; font-size: 14px; border-top: 1px solid #27272a;">Provider:</td>
+                                                    <td style="padding: 10px 0; color: #fafafa; font-size: 14px; border-top: 1px solid #27272a;">{service['provider']}</td>
+                                                </tr>
+                                                <tr>
+                                                    <td style="padding: 10px 0; color: #71717a; font-size: 14px; border-top: 1px solid #27272a;">Category:</td>
+                                                    <td style="padding: 10px 0; color: #fafafa; font-size: 14px; border-top: 1px solid #27272a;">{service['category']}</td>
+                                                </tr>
+                                                <tr>
+                                                    <td style="padding: 10px 0; color: #71717a; font-size: 14px; border-top: 1px solid #27272a;">Days Remaining:</td>
+                                                    <td style="padding: 10px 0; color: {color}; font-size: 18px; font-weight: 700; border-top: 1px solid #27272a;">{days_until_expiry} day(s)</td>
+                                                </tr>
+                                            </table>
+                                        </td>
+                                    </tr>
+                                </table>
+                                
+                                <p style="margin: 0 0 32px 0; color: #a1a1aa; font-size: 16px; line-height: 1.6;">
+                                    Please take action to renew or contact the service provider as soon as possible to avoid any service interruption.
+                                </p>
+                                
+                                <!-- CTA Button -->
+                                <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
+                                    <tr>
+                                        <td align="center">
+                                            <a href="#" style="display: inline-block; background-color: {btn_color}; color: #ffffff; text-decoration: none; padding: 14px 32px; border-radius: 4px; font-size: 14px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">
+                                                Renew Now →
+                                            </a>
+                                        </td>
+                                    </tr>
+                                </table>
+                            </td>
+                        </tr>
+                        
+                        <!-- Footer -->
+                        <tr>
+                            <td style="background-color: #0a0a0b; padding: 24px 40px; border-top: 1px solid #27272a;">
+                                <p style="margin: 0 0 8px 0; color: #71717a; font-size: 14px; text-align: center;">
+                                    Best regards,
+                                </p>
+                                <p style="margin: 0 0 16px 0; color: #a1a1aa; font-size: 14px; font-weight: 600; text-align: center;">
+                                    The {COMPANY_NAME} Service Management Team
+                                </p>
+                                <p style="margin: 0; color: #52525b; font-size: 12px; text-align: center;">
+                                    This is an automated notification from Service Renewal Hub
+                                </p>
+                            </td>
+                        </tr>
+                        
+                    </table>
+                </td>
+            </tr>
+        </table>
+    </body>
+    </html>
     """
+    
+    subject = f"Reminder: Service \"{service['name']}\" is Expiring Soon!"
+    if days_until_expiry <= 1:
+        subject = f"URGENT: Service \"{service['name']}\" expires {'TODAY' if days_until_expiry <= 0 else 'TOMORROW'}!"
+    elif days_until_expiry <= 7:
+        subject = f"WARNING: Service \"{service['name']}\" expires in {days_until_expiry} days!"
     
     params = {
         "from": SENDER_EMAIL,
         "to": [service["contact_email"]],
-        "subject": f"[{urgency}] {service['name']} expires in {days_until_expiry} day(s)",
+        "subject": subject,
         "html": html_content
     }
     
