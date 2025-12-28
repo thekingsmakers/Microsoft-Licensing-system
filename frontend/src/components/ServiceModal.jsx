@@ -32,6 +32,7 @@ const ServiceModal = ({ open, onClose, onSubmit, service, categories }) => {
     category: "",
     expiry_date: "",
     contact_email: "",
+    contact_name: "",
     notes: "",
     cost: ""
   });
@@ -46,6 +47,7 @@ const ServiceModal = ({ open, onClose, onSubmit, service, categories }) => {
         category: service.category || "",
         expiry_date: service.expiry_date || "",
         contact_email: service.contact_email || "",
+        contact_name: service.contact_name || "",
         notes: service.notes || "",
         cost: service.cost?.toString() || ""
       });
@@ -59,6 +61,7 @@ const ServiceModal = ({ open, onClose, onSubmit, service, categories }) => {
         category: "",
         expiry_date: "",
         contact_email: "",
+        contact_name: "",
         notes: "",
         cost: ""
       });
@@ -176,6 +179,18 @@ const ServiceModal = ({ open, onClose, onSubmit, service, categories }) => {
 
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
+              <Label htmlFor="contact_name" className="label-uppercase">Contact Name</Label>
+              <Input
+                id="contact_name"
+                type="text"
+                placeholder="John Doe"
+                value={formData.contact_name}
+                onChange={(e) => setFormData({ ...formData, contact_name: e.target.value })}
+                data-testid="service-contact-name-input"
+                className="bg-background"
+              />
+            </div>
+            <div className="space-y-2">
               <Label htmlFor="contact_email" className="label-uppercase">Contact Email</Label>
               <Input
                 id="contact_email"
@@ -188,6 +203,9 @@ const ServiceModal = ({ open, onClose, onSubmit, service, categories }) => {
                 className="bg-background"
               />
             </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="cost" className="label-uppercase">Annual Cost ($)</Label>
               <Input
@@ -200,6 +218,7 @@ const ServiceModal = ({ open, onClose, onSubmit, service, categories }) => {
                 className="bg-background"
               />
             </div>
+            <div /> {/* Spacer */}
           </div>
 
           <div className="space-y-2">
