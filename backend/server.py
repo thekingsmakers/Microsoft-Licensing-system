@@ -578,6 +578,10 @@ async def check_expiring_services():
     """Check for expiring services and send notifications"""
     logger.info("Running expiry check...")
     
+    # Get notification thresholds from settings
+    settings = await get_app_settings()
+    thresholds = settings.get("notification_thresholds", NOTIFICATION_THRESHOLDS)
+    
     services = await db.services.find({"status": "active"}, {"_id": 0}).to_list(1000)
     now = datetime.now(timezone.utc)
     
@@ -594,7 +598,7 @@ async def check_expiring_services():
             days_until = (expiry_date - now).days
             notifications_sent = service.get("notifications_sent", [])
             
-            for threshold in NOTIFICATION_THRESHOLDS:
+            for threshold in thresholds:
                 if days_until <= threshold and threshold not in notifications_sent:
                     try:
                         await send_expiry_email(service, days_until)
