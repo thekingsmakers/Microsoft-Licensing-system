@@ -33,18 +33,28 @@ Design a complete web application for internal service management with:
 ## What's Been Implemented (December 2024)
 ### Backend
 - User authentication (register/login) with JWT
-- Services CRUD API endpoints
+- Services CRUD API endpoints with contact_name field
 - Dashboard statistics endpoint
 - Email notification system with Resend integration
+- Professional HTML email templates with:
+  - Service details (name, provider, category, expiry date)
+  - Contact personalization (Dear [Name])
+  - Urgency badges (URGENT/WARNING/REMINDER)
+  - Call-to-action buttons
+  - Company branding
 - Manual reminder sending per service
-- Expiry check background task
+- Automated daily expiry check via APScheduler (runs at 9 AM)
 - Categories endpoint
 
 ### Frontend
 - Login/Register page with tabs
 - Dashboard with stats cards
 - Services table with search and filters
-- Add/Edit service modal with calendar picker
+- Add/Edit service modal with:
+  - Service Name, Provider
+  - Category dropdown, Expiry Date picker
+  - Contact Name, Contact Email
+  - Annual Cost, Notes
 - Category and status filtering
 - Email logs/notifications page
 - Responsive sidebar navigation
