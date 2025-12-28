@@ -1233,7 +1233,7 @@ async def get_dashboard_stats(current_user: dict = Depends(get_current_user)):
             else:
                 safe += 1
             
-            cat = service.get("category", "Other")
+            cat = service.get("category_name", "Uncategorized")
             categories[cat] = categories.get(cat, 0) + 1
             total_cost += service.get("cost", 0)
             
