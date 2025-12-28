@@ -1,0 +1,148 @@
+{
+  "identity": {
+    "persona": "E1: The Anti-AI Designer",
+    "mission": "Create a 'Cyber-Swiss' Control Room interface that merges high-precision utility with cinematic depth.",
+    "principles": [
+      "Fusion: Swiss Grid precision + Cyberpunk atmosphere",
+      "Emotion: Authority, Control, Foresight",
+      "Density: High data density, no wasted pixels",
+      "Contrast: Luminous data against void backgrounds"
+    ]
+  },
+  "typography": {
+    "strategy": "The 'Soft Utility' Archetype",
+    "fonts": {
+      "heading": {
+        "family": "Manrope",
+        "weights": ["600", "700", "800"],
+        "usage": "Page titles, widget headers, modal titles. Use tight tracking."
+      },
+      "body": {
+        "family": "IBM Plex Sans",
+        "weights": ["400", "500"],
+        "usage": "General text, labels, form inputs."
+      },
+      "mono": {
+        "family": "JetBrains Mono",
+        "weights": ["400", "500"],
+        "usage": "IDs, dates, currency, status codes, tabular data."
+      }
+    },
+    "rules": [
+      "Headings > 24px must have tracking-tight (-0.02em).",
+      "Labels must be uppercase, text-xs, tracking-widest (0.1em), and text-muted-foreground.",
+      "Tabular numbers (font-variant-numeric: tabular-nums) are MANDATORY for all data tables."
+    ]
+  },
+  "colors": {
+    "theme": "dark",
+    "palette": {
+      "background": "#09090b",
+      "foreground": "#fafafa",
+      "card": "#121214",
+      "card_foreground": "#fafafa",
+      "popover": "#09090b",
+      "popover_foreground": "#fafafa",
+      "primary": "#06b6d4",
+      "primary_foreground": "#000000",
+      "secondary": "#27272a",
+      "secondary_foreground": "#fafafa",
+      "muted": "#27272a",
+      "muted_foreground": "#a1a1aa",
+      "accent": "#27272a",
+      "accent_foreground": "#fafafa",
+      "destructive": "#ef4444",
+      "destructive_foreground": "#fafafa",
+      "border": "#27272a",
+      "input": "#27272a",
+      "ring": "#06b6d4"
+    },
+    "status_colors": {
+      "success": "#10b981",
+      "warning": "#f59e0b",
+      "error": "#ef4444",
+      "info": "#3b82f6"
+    },
+    "gradients": {
+      "glow_cyan": "linear-gradient(135deg, rgba(6,182,212,0.1) 0%, rgba(6,182,212,0) 100%)",
+      "glow_danger": "linear-gradient(135deg, rgba(239,68,68,0.1) 0%, rgba(239,68,68,0) 100%)"
+    }
+  },
+  "layout": {
+    "grid_system": "The 'Control Room' Grid",
+    "spacing": {
+      "container_padding": "p-6 md:p-8 lg:p-12",
+      "gap": "gap-4 md:gap-6",
+      "internal_padding": "p-6"
+    },
+    "structure": [
+      "Sidebar: Fixed width (280px), glassmorphism effect.",
+      "Main Content: Fluid width, max-w-[1600px] centered.",
+      "Dashboard Grid: grid-cols-1 md:grid-cols-3 lg:grid-cols-4 auto-rows-min."
+    ]
+  },
+  "components": {
+    "strategy": "Shadcn/UI Base + 'Cyber-Swiss' Customization",
+    "overrides": {
+      "Card": {
+        "style": "Flat background (#121214), 1px border (#27272a).",
+        "effect": "Add a 'Tracing Beam' hover effect using a moving gradient border.",
+        "radius": "rounded-none or rounded-sm (max 4px)."
+      },
+      "Button": {
+        "style": "Sharp edges or minimal radius (2px).",
+        "primary": "bg-primary text-black font-bold hover:bg-primary/90 hover:shadow-[0_0_15px_rgba(6,182,212,0.4)].",
+        "secondary": "bg-secondary hover:bg-secondary/80 border border-white/5."
+      },
+      "Table": {
+        "style": "Dense layout. Header: uppercase, text-xs, text-muted-foreground. Row hover: bg-white/5.",
+        "borders": "Horizontal borders only (divide-y divide-white/5)."
+      },
+      "Badge": {
+        "style": "Pill shape, 1px border, bg-opacity-10.",
+        "variants": {
+          "success": "bg-emerald-500/10 text-emerald-500 border-emerald-500/20",
+          "warning": "bg-amber-500/10 text-amber-500 border-amber-500/20",
+          "destructive": "bg-red-500/10 text-red-500 border-red-500/20"
+        }
+      }
+    }
+  },
+  "visual_enhancers": {
+    "glassmorphism": "backdrop-blur-xl bg-black/40 border-r border-white/10 (Sidebar)",
+    "noise": "Add a subtle SVG noise overlay at 2% opacity to the main background to kill the 'digital flatness'.",
+    "glows": "Use drop-shadow-[0_0_10px_rgba(var(--primary),0.3)] for active states.",
+    "animations": {
+      "hover": "transition-all duration-200 ease-out",
+      "enter": "animate-in fade-in slide-in-from-bottom-4 duration-500"
+    }
+  },
+  "assets": {
+    "images": {
+      "login_background": {
+        "url": "https://images.unsplash.com/photo-1759159347827-de3a54002de7?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NDQ2NDJ8MHwxfHNlYXJjaHwyfHxhYnN0cmFjdCUyMGRhcmslMjB0ZWNobm9sb2d5JTIwYmFja2dyb3VuZCUyMGdlb21ldHJpY3xlbnwwfHx8fDE3NjY5MDkzMDV8MA&ixlib=rb-4.1.0&q=85",
+        "alt": "Abstract dark geometric structure with glowing green lines",
+        "usage": "Full screen background for Login page with overlay-black/80"
+      }
+    },
+    "icons": {
+      "library": "lucide-react",
+      "style": "Stroke width 1.5px (thin and precise)."
+    }
+  },
+  "instructions_to_main_agent": [
+    "1. SETUP: Install 'lucide-react', 'recharts', 'date-fns', 'framer-motion', 'clsx', 'tailwind-merge'.",
+    "2. THEME: Update 'tailwind.config.js' and 'index.css' with the provided color palette. FORCE DARK MODE.",
+    "3. LAYOUT: Create a 'DashboardLayout' component with the glassmorphism sidebar.",
+    "4. COMPONENTS: Customize Shadcn components. Do not use default rounded-lg, switch to rounded-sm or rounded-md.",
+    "5. DATA: Mock the service data. Ensure dates are close to expiry to demonstrate the status logic.",
+    "6. CRITICAL: Ensure all interactive elements have 'data-testid'.",
+    "7. CRITICAL: Do not use gradients for backgrounds, use solid dark colors + noise texture."
+  ],
+  "universal_guidelines": [
+    "Avoid 'AI Slop': No generic centered layouts. Use asymmetry.",
+    "Spacing: Use p-8 or p-12 for main containers.",
+    "Micro-interactions: Every button must have a hover state (transform/color change).",
+    "Accessibility: Ensure text contrast > 4.5:1. Use 'sonner' for toasts."
+  ]
+}
