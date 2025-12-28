@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { Routes, Route } from "react-router-dom";
 import axios from "axios";
 import { useAuth, API } from "../App";
-import Sidebar from "../components/Sidebar";
+import CategorySidebar from "../components/CategorySidebar";
 import ServiceTable from "../components/ServiceTable";
 import ServiceModal from "../components/ServiceModal";
 import StatsCards from "../components/StatsCards";
@@ -23,37 +23,52 @@ import { Plus, Search, RefreshCw, Bell } from "lucide-react";
 const Dashboard = () => {
   const { token, user } = useAuth();
   const [services, setServices] = useState([]);
-  const [stats, setStats] = useState(null);
   const [categories, setCategories] = useState([]);
+  const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
   const [editingService, setEditingService] = useState(null);
   const [searchQuery, setSearchQuery] = useState("");
-  const [categoryFilter, setCategoryFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [selectedCategoryId, setSelectedCategoryId] = useState(null);
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
 
   const headers = { Authorization: `Bearer ${token}` };
 
   const fetchData = useCallback(async () => {
     try {
+      // Build query params
+      const params = new URLSearchParams();
+      if (selectedCategoryId) {
+        params.append("category_id", selectedCategoryId);
+      }
+      
       const [servicesRes, statsRes, categoriesRes] = await Promise.all([
-        axios.get(`${API}/services`, { headers }),
+        axios.get(`${API}/services${params.toString() ? `?${params}` : ""}`, { headers }),
         axios.get(`${API}/dashboard/stats`, { headers }),
-        axios.get(`${API}/categories`)
+        axios.get(`${API}/categories`, { headers })
       ]);
       setServices(servicesRes.data);
       setStats(statsRes.data);
-      setCategories(categoriesRes.data.categories);
+      setCategories(categoriesRes.data.categories || []);
     } catch (error) {
       toast.error("Failed to fetch data");
     } finally {
       setLoading(false);
     }
-  }, [token]);
+  }, [token, selectedCategoryId]);
 
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  const handleCategorySelect = (categoryId) => {
+    setSelectedCategoryId(categoryId);
+  };
+
+  const refreshSidebar = () => {
+    setRefreshTrigger(prev => prev + 1);
+  };
 
   const handleCreateService = async (data) => {
     try {
@@ -61,6 +76,7 @@ const Dashboard = () => {
       toast.success("Service created successfully");
       setModalOpen(false);
       fetchData();
+      refreshSidebar();
     } catch (error) {
       toast.error(error.response?.data?.detail || "Failed to create service");
     }
@@ -73,6 +89,7 @@ const Dashboard = () => {
       setModalOpen(false);
       setEditingService(null);
       fetchData();
+      refreshSidebar();
     } catch (error) {
       toast.error(error.response?.data?.detail || "Failed to update service");
     }
@@ -83,6 +100,7 @@ const Dashboard = () => {
       await axios.delete(`${API}/services/${id}`, { headers });
       toast.success("Service deleted successfully");
       fetchData();
+      refreshSidebar();
     } catch (error) {
       toast.error(error.response?.data?.detail || "Failed to delete service");
     }
@@ -90,8 +108,8 @@ const Dashboard = () => {
 
   const handleSendReminder = async (service) => {
     try {
-      await axios.post(`${API}/services/${service.id}/send-reminder`, {}, { headers });
-      toast.success(`Reminder sent to ${service.contact_email}`);
+      const response = await axios.post(`${API}/services/${service.id}/send-reminder`, {}, { headers });
+      toast.success(response.data.message || "Reminder sent successfully");
     } catch (error) {
       toast.error(error.response?.data?.detail || "Failed to send reminder");
     }
@@ -117,6 +135,7 @@ const Dashboard = () => {
   };
 
   const getServiceStatus = (expiryDate) => {
+    if (!expiryDate) return "unknown";
     const now = new Date();
     const expiry = new Date(expiryDate);
     const daysUntil = Math.ceil((expiry - now) / (1000 * 60 * 60 * 24));
@@ -128,25 +147,35 @@ const Dashboard = () => {
   };
 
   const filteredServices = services.filter(service => {
-    const matchesSearch = service.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         service.provider.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesCategory = categoryFilter === "all" || service.category === categoryFilter;
+    const matchesSearch = service.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                         service.provider?.toLowerCase().includes(searchQuery.toLowerCase());
     const status = getServiceStatus(service.expiry_date);
     const matchesStatus = statusFilter === "all" || 
                          (statusFilter === "expiring" && (status === "danger" || status === "warning")) ||
                          (statusFilter === "expired" && status === "expired") ||
                          (statusFilter === "safe" && status === "safe");
     
-    return matchesSearch && matchesCategory && matchesStatus;
+    return matchesSearch && matchesStatus;
   });
+
+  const getPageTitle = () => {
+    if (selectedCategoryId) {
+      if (selectedCategoryId === "uncategorized") return "Uncategorized Services";
+      const cat = categories.find(c => c.id === selectedCategoryId);
+      return cat ? cat.name : "Services";
+    }
+    return "All Services";
+  };
 
   const ServicesPage = () => (
     <div className="animate-enter">
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-8">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Services</h1>
+          <h1 className="text-3xl font-bold tracking-tight">{getPageTitle()}</h1>
           <p className="text-muted-foreground mt-1">
-            Manage your organization's service subscriptions and renewals
+            {selectedCategoryId 
+              ? `Manage services in this category`
+              : "Manage your organization's service subscriptions and renewals"}
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -163,7 +192,7 @@ const Dashboard = () => {
           <Button 
             variant="outline" 
             size="sm"
-            onClick={fetchData}
+            onClick={() => { fetchData(); refreshSidebar(); }}
             data-testid="refresh-btn"
             className="btn-secondary"
           >
@@ -195,17 +224,6 @@ const Dashboard = () => {
             data-testid="search-input"
           />
         </div>
-        <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-          <SelectTrigger className="w-full sm:w-[180px] bg-card border-border" data-testid="category-filter">
-            <SelectValue placeholder="Category" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Categories</SelectItem>
-            {categories.map(cat => (
-              <SelectItem key={cat} value={cat}>{cat}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
         <Select value={statusFilter} onValueChange={setStatusFilter}>
           <SelectTrigger className="w-full sm:w-[180px] bg-card border-border" data-testid="status-filter">
             <SelectValue placeholder="Status" />
@@ -232,7 +250,11 @@ const Dashboard = () => {
 
   return (
     <div className="flex min-h-screen">
-      <Sidebar />
+      <CategorySidebar 
+        onCategorySelect={handleCategorySelect}
+        selectedCategoryId={selectedCategoryId}
+        onRefresh={refreshTrigger}
+      />
       <main className="flex-1 lg:ml-[280px] p-6 md:p-8 lg:p-12">
         <div className="max-w-[1600px] mx-auto">
           <Routes>
