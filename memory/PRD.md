@@ -33,15 +33,27 @@ Design a complete web application for internal service management with:
 ## What's Been Implemented (December 2024)
 ### Backend
 - User authentication (register/login) with JWT
+- **RBAC (Role-Based Access Control)**:
+  - Admin role: Full access to settings, user management, all services
+  - User role: Limited access (view/edit services, no settings)
+  - First registered user automatically becomes admin
 - Services CRUD API endpoints with contact_name field
 - Dashboard statistics endpoint
+- **Settings API** (admin only):
+  - GET/PUT settings for email configuration
+  - Notification thresholds stored in database
+  - Settings persisted in MongoDB instead of .env
+- **User Management API** (admin only):
+  - List all users
+  - Change user roles
+  - Delete users (with safeguards)
 - Email notification system with Resend integration
 - Professional HTML email templates with:
   - Service details (name, provider, category, expiry date)
   - Contact personalization (Dear [Name])
   - Urgency badges (URGENT/WARNING/REMINDER)
   - Call-to-action buttons
-  - Company branding
+  - Company branding from settings
 - Manual reminder sending per service
 - Automated daily expiry check via APScheduler (runs at 9 AM)
 - Categories endpoint
@@ -50,14 +62,14 @@ Design a complete web application for internal service management with:
 - Login/Register page with tabs
 - Dashboard with stats cards
 - Services table with search and filters
-- Add/Edit service modal with:
-  - Service Name, Provider
-  - Category dropdown, Expiry Date picker
-  - Contact Name, Contact Email
-  - Annual Cost, Notes
+- Add/Edit service modal with all fields
 - Category and status filtering
 - Email logs/notifications page
-- Responsive sidebar navigation
+- **Settings Page (Admin only)**:
+  - Email tab: Resend API key, Sender email, Company name
+  - Alerts tab: Configurable notification thresholds
+  - Users tab: User management with role changes
+- Responsive sidebar navigation with admin badge
 - Dark "Cyber-Swiss" theme design
 
 ## Prioritized Backlog
