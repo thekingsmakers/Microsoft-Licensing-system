@@ -10,12 +10,33 @@ import {
   X,
   Settings
 } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import axios from "axios";
 
 const Sidebar = () => {
-  const { user, logout } = useAuth();
+  const { user, logout, token } = useAuth();
   const navigate = useNavigate();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [branding, setBranding] = useState({
+    company_name: "Renewal Hub",
+    company_tagline: "Service Manager",
+    logo_url: "",
+    primary_color: "#06b6d4"
+  });
+
+  useEffect(() => {
+    // Fetch public branding settings
+    const fetchBranding = async () => {
+      try {
+        const API = process.env.REACT_APP_BACKEND_URL + "/api";
+        const response = await axios.get(`${API}/settings/public`);
+        setBranding(response.data);
+      } catch (error) {
+        console.log("Using default branding");
+      }
+    };
+    fetchBranding();
+  }, []);
 
   const handleLogout = () => {
     logout();
@@ -36,12 +57,29 @@ const Sidebar = () => {
     <>
       {/* Logo */}
       <div className="flex items-center gap-3 p-6 border-b border-white/10">
-        <div className="p-2 rounded-sm bg-primary/10 border border-primary/20">
-          <Shield className="h-6 w-6 text-primary" strokeWidth={1.5} />
+        {branding.logo_url ? (
+          <img 
+            src={branding.logo_url} 
+            alt="Logo" 
+            className="h-10 w-10 rounded-sm object-contain"
+            onError={(e) => {
+              e.target.style.display = 'none';
+              e.target.nextSibling.style.display = 'flex';
+            }}
+          />
+        ) : null}
+        <div 
+          className={`p-2 rounded-sm border ${branding.logo_url ? 'hidden' : 'flex'}`}
+          style={{ 
+            backgroundColor: `${branding.primary_color}15`,
+            borderColor: `${branding.primary_color}30`
+          }}
+        >
+          <Shield className="h-6 w-6" style={{ color: branding.primary_color }} strokeWidth={1.5} />
         </div>
         <div>
-          <h1 className="font-bold text-lg tracking-tight">Renewal Hub</h1>
-          <p className="text-xs text-muted-foreground">Service Manager</p>
+          <h1 className="font-bold text-lg tracking-tight">{branding.company_name || "Renewal Hub"}</h1>
+          <p className="text-xs text-muted-foreground">{branding.company_tagline || "Service Manager"}</p>
         </div>
       </div>
 
