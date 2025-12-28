@@ -39,38 +39,40 @@ Design a complete web application for internal service management with:
   - First registered user automatically becomes admin
 - Services CRUD API endpoints with contact_name field
 - Dashboard statistics endpoint
+- **Multi-Provider Email Support**:
+  - Resend API
+  - Custom SMTP
+  - Gmail (with app password)
+  - Outlook / Office 365
+  - Microsoft Exchange
+  - SendGrid
+  - Mailgun
+  - Yahoo Mail
+  - SMTP presets auto-configure host/port for known providers
 - **Settings API** (admin only):
-  - GET/PUT settings for email configuration
-  - Notification thresholds stored in database
-  - Settings persisted in MongoDB instead of .env
-- **User Management API** (admin only):
-  - List all users
-  - Change user roles
-  - Delete users (with safeguards)
-- Email notification system with Resend integration
-- Professional HTML email templates with:
-  - Service details (name, provider, category, expiry date)
-  - Contact personalization (Dear [Name])
-  - Urgency badges (URGENT/WARNING/REMINDER)
-  - Call-to-action buttons
-  - Company branding from settings
-- Manual reminder sending per service
+  - Email provider configuration
+  - SMTP settings (host, port, username, password, TLS)
+  - Branding settings (company name, tagline, logo URL)
+  - Theme settings (dark/light/system mode, accent colors)
+  - Notification thresholds
+  - Test email endpoint
+- **Public Settings API** (no auth): Returns branding for theming
+- **User Management API** (admin only)
+- Professional HTML email templates
 - Automated daily expiry check via APScheduler (runs at 9 AM)
-- Categories endpoint
 
 ### Frontend
 - Login/Register page with tabs
 - Dashboard with stats cards
 - Services table with search and filters
 - Add/Edit service modal with all fields
-- Category and status filtering
-- Email logs/notifications page
-- **Settings Page (Admin only)**:
-  - Email tab: Resend API key, Sender email, Company name
-  - Alerts tab: Configurable notification thresholds
-  - Users tab: User management with role changes
-- Responsive sidebar navigation with admin badge
-- Dark "Cyber-Swiss" theme design
+- **Settings Page (Admin only)** with 4 tabs:
+  - **Email**: Provider dropdown, Resend API key, SMTP config, sender info, test email button
+  - **Branding**: Company name, tagline, logo URL, theme mode (Dark/Light/System), accent color picker
+  - **Alerts**: Configurable notification thresholds
+  - **Users**: User management with role changes
+- Dynamic branding in sidebar (company name, tagline, logo)
+- Responsive dark theme with customizable accent colors
 
 ## Prioritized Backlog
 ### P0 (Critical) - Done
