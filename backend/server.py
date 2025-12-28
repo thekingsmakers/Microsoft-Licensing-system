@@ -526,6 +526,124 @@ async def delete_user(user_id: str, current_user: dict = Depends(get_admin_user)
     await db.users.delete_one({"id": user_id})
     return {"message": "User deleted successfully"}
 
+# ==================== CATEGORY ROUTES ====================
+
+@api_router.get("/categories")
+async def get_categories(current_user: dict = Depends(get_current_user)):
+    """Get all categories for the current user plus system defaults"""
+    user_categories = await db.categories.find(
+        {"user_id": current_user["id"]}, 
+        {"_id": 0}
+    ).to_list(100)
+    
+    # Add service counts to each category
+    for cat in user_categories:
+        count = await db.services.count_documents({"category_id": cat["id"]})
+        cat["service_count"] = count
+    
+    return {"categories": user_categories}
+
+@api_router.get("/categories/with-services")
+async def get_categories_with_services(current_user: dict = Depends(get_current_user)):
+    """Get categories with their services for sidebar navigation"""
+    user_categories = await db.categories.find(
+        {"user_id": current_user["id"]}, 
+        {"_id": 0}
+    ).sort("name", 1).to_list(100)
+    
+    # Get uncategorized services
+    uncategorized_services = await db.services.find(
+        {"$or": [{"category_id": None}, {"category_id": ""}]},
+        {"_id": 0, "id": 1, "name": 1, "status": 1, "expiry_date": 1}
+    ).to_list(1000)
+    
+    result = []
+    
+    # Add user categories with their services
+    for cat in user_categories:
+        services = await db.services.find(
+            {"category_id": cat["id"]},
+            {"_id": 0, "id": 1, "name": 1, "status": 1, "expiry_date": 1}
+        ).to_list(1000)
+        result.append({
+            **cat,
+            "services": services,
+            "service_count": len(services)
+        })
+    
+    # Add uncategorized at the end if there are any
+    if uncategorized_services:
+        result.append({
+            "id": "uncategorized",
+            "name": "Uncategorized",
+            "description": "Services without a category",
+            "color": "#71717a",
+            "icon": "inbox",
+            "services": uncategorized_services,
+            "service_count": len(uncategorized_services)
+        })
+    
+    return {"categories": result}
+
+@api_router.post("/categories")
+async def create_category(category_data: CategoryCreate, current_user: dict = Depends(get_current_user)):
+    # Check for duplicate name
+    existing = await db.categories.find_one({
+        "user_id": current_user["id"],
+        "name": {"$regex": f"^{category_data.name}$", "$options": "i"}
+    })
+    if existing:
+        raise HTTPException(status_code=400, detail="Category with this name already exists")
+    
+    category = Category(
+        user_id=current_user["id"],
+        **category_data.model_dump()
+    )
+    await db.categories.insert_one(category.model_dump())
+    return category
+
+@api_router.put("/categories/{category_id}")
+async def update_category(
+    category_id: str, 
+    category_data: CategoryUpdate, 
+    current_user: dict = Depends(get_current_user)
+):
+    existing = await db.categories.find_one({
+        "id": category_id,
+        "user_id": current_user["id"]
+    }, {"_id": 0})
+    
+    if not existing:
+        raise HTTPException(status_code=404, detail="Category not found")
+    
+    update_data = {k: v for k, v in category_data.model_dump().items() if v is not None}
+    update_data["updated_at"] = datetime.now(timezone.utc).isoformat()
+    
+    if update_data:
+        await db.categories.update_one({"id": category_id}, {"$set": update_data})
+    
+    updated = await db.categories.find_one({"id": category_id}, {"_id": 0})
+    return updated
+
+@api_router.delete("/categories/{category_id}")
+async def delete_category(category_id: str, current_user: dict = Depends(get_current_user)):
+    existing = await db.categories.find_one({
+        "id": category_id,
+        "user_id": current_user["id"]
+    }, {"_id": 0})
+    
+    if not existing:
+        raise HTTPException(status_code=404, detail="Category not found")
+    
+    # Update services in this category to uncategorized
+    await db.services.update_many(
+        {"category_id": category_id},
+        {"$set": {"category_id": None, "category_name": "Uncategorized"}}
+    )
+    
+    await db.categories.delete_one({"id": category_id})
+    return {"message": "Category deleted successfully"}
+
 # ==================== SERVICE ROUTES ====================
 
 @api_router.get("/services", response_model=List[Service])
